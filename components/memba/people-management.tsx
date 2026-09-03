@@ -1,0 +1,46 @@
+"use client"
+
+import { useState } from "react"
+import { MapPin, Plus, Shield, Users } from "lucide-react"
+
+import { useMemba } from "@/components/memba-provider"
+import { buttonVariants } from "@/components/ui/button"
+import type { CreateMemberInput, Role } from "@/lib/memba/types"
+import { cn } from "@/lib/utils"
+
+type BusinessRole = Exclude<Role, "SUPER_ADMIN">
+
+export function PeopleManagement({ organizationId }: { organizationId: string }) {
+  const { createMember, data, membership, setUserActive, updateMember } = useMemba()
+  const organization = data.organizations.find((item) => item.id === organizationId)
+  const locations = data.locations.filter((item) => item.organizationId === organizationId && item.active)
+  const memberships = data.memberships.filter((item) => item.organizationId === organizationId)
+  const canManage = membership.role === "SUPER_ADMIN" || (membership.role === "ADMIN" && membership.organizationId === organizationId)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+
+  if (!organization || !canManage) return <div className="mx-auto max-w-xl px-4 py-20 text-center"><Users className="mx-auto size-10 text-muted-foreground" aria-hidden="true" /><h1 className="mt-5 text-2xl font-semibold">People management unavailable</h1><p className="mt-2 text-sm text-muted-foreground">The organization does not exist or your current role cannot manage it.</p></div>
+
+  function invite(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setError(null); setSuccess(null)
+    const form = event.currentTarget; const values = new FormData(form)
+    const locationIds = values.getAll("locationIds").map(String)
+    const input: CreateMemberInput = { organizationId, name: String(values.get("name") ?? ""), email: String(values.get("email") ?? ""), role: String(values.get("role")) as BusinessRole, locationIds }
+    if (input.name.trim().split(/\s+/).length < 2) { setError("Enter the user’s full name."); return }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) { setError("Enter a valid email address."); return }
+    try { createMember(input); form.reset(); setSuccess(`${input.name.trim()} was added. Clerk invitation delivery will be connected later.`) } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not add this user.") }
+  }
+
+  return <div className="mx-auto max-w-[1440px] px-4 py-6 md:px-6 lg:px-8 lg:py-8"><div><p className="text-sm font-medium text-primary">{organization.name}</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">People and access</h1><p className="mt-2 text-sm text-muted-foreground">Assign roles and locations. Users may belong to multiple organizations.</p></div>
+    <div className="mt-8 grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(22rem,0.7fr)]"><section className="rounded-xl border bg-card"><div className="border-b px-5 py-4"><h2 className="font-semibold">Members</h2><p className="mt-1 text-xs text-muted-foreground">{memberships.length} organization memberships</p></div><div className="divide-y">{memberships.map((item) => { const person = data.users.find((candidate) => candidate.id === item.userId); if (!person) return null; return <MemberRow key={item.id} item={item} person={person} locations={locations} onUpdate={(role, locationIds) => updateMember(item.id, role, locationIds)} onActive={(active) => setUserActive(person.id, active)} /> })}</div></section>
+      <aside className="rounded-xl border bg-card p-5"><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-lg bg-secondary"><Plus className="size-4" aria-hidden="true" /></span><div><h2 className="font-semibold">Add user</h2><p className="mt-1 text-xs text-muted-foreground">Create a pending organization invitation.</p></div></div><form onSubmit={invite} className="mt-5 space-y-4" noValidate><TextInput name="name" label="Full name" placeholder="Jordan Lee" autoComplete="name" /><TextInput name="email" label="Email" placeholder="jordan@example.com" type="email" autoComplete="email" /><div className="space-y-1.5"><label htmlFor="role" className="text-sm font-medium">Role</label><select id="role" name="role" className="h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring"><option value="STORE_USER">Store user</option><option value="STORE_MANAGER">Store manager</option><option value="ADMIN">Organization admin</option></select></div><fieldset><legend className="text-sm font-medium">Locations <span className="text-muted-foreground">(select at least one)</span></legend><div className="mt-2 space-y-2">{locations.map((location) => <label key={location.id} className="flex min-h-10 items-center gap-3 rounded-md border px-3 py-2 text-sm hover:bg-accent"><input type="checkbox" name="locationIds" value={location.id} className="size-4 accent-primary" />{location.name}</label>)}</div></fieldset>{error && <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}{success && <p role="status" className="rounded-md bg-emerald-500/10 px-3 py-2 text-sm leading-5 text-emerald-700 dark:text-emerald-300">{success}</p>}<button type="submit" className={cn(buttonVariants(), "min-h-10 w-full")}>Add user</button></form></aside></div>
+  </div>
+}
+
+function MemberRow({ item, person, locations, onUpdate, onActive }: { item: { id: string; role: Role; locationIds: string[] }; person: { name: string; email: string; initials: string; active: boolean }; locations: Array<{ id: string; name: string }>; onUpdate: (role: BusinessRole, locationIds: string[]) => void; onActive: (active: boolean) => void }) {
+  const [editing, setEditing] = useState(false); const [error, setError] = useState<string | null>(null)
+  function save(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const values = new FormData(event.currentTarget); try { onUpdate(String(values.get("role")) as BusinessRole, values.getAll("locationIds").map(String)); setEditing(false); setError(null) } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not update access.") } }
+  return <article className="px-5 py-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-center"><span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{person.initials}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-sm font-medium">{person.name}</h3>{!person.active && <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">Inactive</span>}</div><p className="mt-1 truncate text-xs text-muted-foreground">{person.email}</p><p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground"><MapPin className="size-3" aria-hidden="true" />{item.locationIds.length} location{item.locationIds.length === 1 ? "" : "s"}</p></div><div className="flex gap-2"><button type="button" onClick={() => setEditing((value) => !value)} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "min-h-10")}>{editing ? "Cancel" : "Edit access"}</button><button type="button" onClick={() => onActive(!person.active)} className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-10")}>{person.active ? "Deactivate" : "Activate"}</button></div></div>{editing && <form onSubmit={save} className="mt-4 rounded-lg bg-muted/50 p-4"><div className="grid gap-4 sm:grid-cols-2"><div className="space-y-1.5"><label htmlFor={`role-${item.id}`} className="text-sm font-medium">Role</label><select id={`role-${item.id}`} name="role" defaultValue={item.role} className="h-11 w-full rounded-md border bg-background px-3 text-sm"><option value="STORE_USER">Store user</option><option value="STORE_MANAGER">Store manager</option><option value="ADMIN">Organization admin</option></select></div><fieldset><legend className="text-sm font-medium">Assigned locations</legend><div className="mt-2 grid gap-2">{locations.map((location) => <label key={location.id} className="flex items-center gap-2 text-sm"><input type="checkbox" name="locationIds" value={location.id} defaultChecked={item.locationIds.includes(location.id)} className="size-4 accent-primary" />{location.name}</label>)}</div></fieldset></div>{error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}<button type="submit" className={cn(buttonVariants({ size: "sm" }), "mt-4 min-h-10")}><Shield className="size-4" aria-hidden="true" />Save access</button></form>}</article>
+}
+
+function TextInput({ name, label, placeholder, type = "text", autoComplete }: { name: string; label: string; placeholder: string; type?: string; autoComplete?: string }) { return <div className="space-y-1.5"><label htmlFor={name} className="text-sm font-medium">{label} <span className="text-muted-foreground">(required)</span></label><input id={name} name={name} type={type} autoComplete={autoComplete} spellCheck={false} placeholder={placeholder} className="h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring" /></div> }

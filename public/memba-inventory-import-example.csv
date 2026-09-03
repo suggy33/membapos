@@ -1,0 +1,3 @@
+product_id,colour,length_cm,width_cm,location_code,quantity_change,reason,notes
+MR266,Grey Cream,160,230,RCH,12,Initial stock,Opening stock count
+MR266,Grey Cream,160,230,PRE,-1,Damaged item,Removed after inspection

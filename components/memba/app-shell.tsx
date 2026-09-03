@@ -1,0 +1,153 @@
+"use client"
+
+import Link from "next/link"
+import { useState } from "react"
+import {
+  ArrowRightLeft,
+  Building2,
+  ChevronDown,
+  CircleUserRound,
+  ClipboardList,
+  LayoutDashboard,
+  Menu,
+  PackageSearch,
+  Plus,
+  Search,
+  Settings,
+  ShoppingBag,
+  Store,
+  Users,
+  X,
+} from "lucide-react"
+
+import { useMemba } from "@/components/memba-provider"
+import type { Role } from "@/lib/memba/types"
+import { cn } from "@/lib/utils"
+
+const navItems = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
+  { label: "Organizations", href: "/organizations", icon: Building2, roles: ["SUPER_ADMIN"] },
+  { label: "New sale", href: "/sales/new", icon: Plus, roles: ["ADMIN", "STORE_MANAGER", "STORE_USER"] },
+  { label: "Orders", href: "/orders", icon: ShoppingBag, roles: ["ADMIN", "STORE_MANAGER", "STORE_USER"] },
+  { label: "Products", href: "/products", icon: PackageSearch, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
+  { label: "Inventory", href: "/inventory", icon: PackageSearch, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
+  { label: "Transfers", href: "/transfers", icon: ArrowRightLeft, roles: ["ADMIN", "STORE_MANAGER", "STORE_USER"] },
+  { label: "Locations", href: "#locations", icon: Store, roles: ["SUPER_ADMIN", "ADMIN"] },
+  { label: "People", href: "#people", icon: Users, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"] },
+  { label: "Reports", href: "/reports", icon: ClipboardList, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"] },
+] satisfies Array<{ label: string; href: string; icon: typeof LayoutDashboard; roles: Role[] }>
+
+const roleLabels: Record<Role, string> = {
+  SUPER_ADMIN: "Super admin",
+  ADMIN: "Organization admin",
+  STORE_MANAGER: "Store manager",
+  STORE_USER: "Store user",
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const { data, endImpersonation, membership, organization, session, switchMembership, switchOrganization, user } = useMemba()
+  const visibleItems = navItems.filter((item) => item.roles.includes(membership.role))
+
+  return (
+    <div className="min-h-svh bg-background text-foreground">
+      <a className="sr-only z-50 rounded-md bg-primary px-4 py-3 text-primary-foreground focus:not-sr-only focus:fixed focus:left-4 focus:top-4" href="#main-content">
+        Skip to content
+      </a>
+
+      <div className="fixed inset-x-0 top-0 z-40 flex min-h-10 items-center justify-center border-b border-amber-500/20 bg-amber-50 px-12 py-2 text-center text-xs font-medium text-amber-950 dark:bg-amber-950 dark:text-amber-100">
+        {session.impersonationActorUserId ? (
+          <span className="flex items-center gap-3">
+            Impersonating {user.name} · {session.impersonationReason}
+            <button type="button" onClick={endImpersonation} className="rounded underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-amber-900">Exit</button>
+          </span>
+        ) : "Local development mode · Data stays in this browser"}
+      </div>
+
+      <header className="fixed inset-x-0 top-10 z-30 flex h-16 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur md:pl-[17rem] md:pr-6">
+        <button
+          type="button"
+          className="grid size-11 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring md:hidden"
+          aria-label="Open navigation"
+          aria-expanded={mobileOpen}
+          onClick={() => setMobileOpen(true)}
+        >
+          <Menu className="size-5" aria-hidden="true" />
+        </button>
+        <button type="button" className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg border bg-card px-3 text-left text-sm text-muted-foreground hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring md:max-w-xl">
+          <Search className="size-4 shrink-0" aria-hidden="true" />
+          <span className="truncate">Search products, orders, customers…</span>
+          <kbd className="ml-auto hidden rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px] sm:inline">⌘ K</kbd>
+        </button>
+        <div className="hidden items-center gap-3 lg:flex">
+          <div className="text-right">
+            <p className="text-sm font-medium leading-4">{user.name}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{roleLabels[membership.role]}</p>
+          </div>
+          <span className="grid size-10 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{user.initials}</span>
+        </div>
+      </header>
+
+      {mobileOpen && <button type="button" className="fixed inset-0 z-40 bg-foreground/30 md:hidden" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
+
+      <aside className={cn("fixed bottom-0 left-0 top-10 z-50 flex w-64 flex-col border-r bg-sidebar text-sidebar-foreground transition-transform duration-200 motion-reduce:transition-none md:translate-x-0", mobileOpen ? "translate-x-0" : "-translate-x-full")}>
+        <div className="flex h-16 items-center justify-between border-b px-5">
+          <Link href="/" className="flex min-h-10 items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+            <span className="grid size-8 place-items-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">M</span>
+            Memba
+          </Link>
+          <button type="button" className="grid size-10 place-items-center rounded-md hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring md:hidden" aria-label="Close navigation" onClick={() => setMobileOpen(false)}>
+            <X className="size-5" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="border-b p-3">
+          <label className="mb-1.5 block px-1 text-xs font-medium text-muted-foreground" htmlFor="persona">Development persona</label>
+          <div className="relative">
+            <CircleUserRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <select id="persona" disabled={Boolean(session.impersonationActorUserId)} value={session.membershipId} onChange={(event) => switchMembership(event.target.value)} className="h-11 w-full appearance-none rounded-md border bg-background pl-9 pr-8 text-sm disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-ring">
+              {data.memberships.map((item) => {
+                const person = data.users.find((candidate) => candidate.id === item.userId)
+                return <option key={item.id} value={item.id}>{person?.name} · {roleLabels[item.role]}</option>
+              })}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          </div>
+
+          {membership.role === "SUPER_ADMIN" && (
+            <div className="mt-3">
+              <label className="mb-1.5 block px-1 text-xs font-medium text-muted-foreground" htmlFor="organization">Organization view</label>
+              <select id="organization" value={organization?.id ?? "platform"} onChange={(event) => switchOrganization(event.target.value)} className="h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:ring-2 focus-visible:ring-ring">
+                <option value="platform">All organizations</option>
+                {data.organizations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+
+        <nav className="flex-1 overflow-y-auto p-3" aria-label="Main navigation">
+          <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Workspace</p>
+          <ul className="space-y-1">
+            {visibleItems.map((item, index) => (
+              <li key={item.label}>
+                <Link href={item.href} onClick={() => setMobileOpen(false)} className={cn("flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-sidebar-ring", index === 0 ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground")}>
+                  <item.icon className="size-4" aria-hidden="true" />{item.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <div className="border-t p-3">
+          <Link href="/settings" className="flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+            <Settings className="size-4" aria-hidden="true" />Settings
+          </Link>
+        </div>
+      </aside>
+
+      <main id="main-content" className="pt-[6.5rem] md:pl-64">
+        {children}
+      </main>
+    </div>
+  )
+}

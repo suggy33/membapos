@@ -1,19 +1,18 @@
-import { Button } from "@/components/ui/button"
+import Link from "next/link"
+import { ArrowRight, BarChart3, PackageSearch, ShieldCheck } from "lucide-react"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 export default function Page() {
-  return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">Project ready!</h1>
-          <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-        <div className="font-mono text-xs text-muted-foreground">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
-      </div>
-    </div>
-  )
+  return <main className="min-h-svh overflow-hidden bg-background text-foreground">
+    <header className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 md:px-8">
+      <Link href="/" className="flex items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:ring-2 focus-visible:ring-ring"><span className="grid size-9 place-items-center rounded-xl bg-primary text-sm text-primary-foreground">M</span>Memba</Link>
+      <nav className="flex items-center gap-2"><Link href="/login" className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:text-foreground">Sign in</Link><Link href="/login" className={cn(buttonVariants({ size: "sm" }))}>Access workspace <ArrowRight className="size-4" aria-hidden="true" /></Link></nav>
+    </header>
+    <section className="relative mx-auto grid max-w-7xl gap-14 px-5 pb-20 pt-16 md:px-8 md:pb-28 md:pt-24 lg:grid-cols-[1.05fr_.95fr] lg:items-center"><div className="absolute -right-48 -top-40 size-[32rem] rounded-full bg-primary/10 blur-3xl" aria-hidden="true" /><div className="relative"><p className="mb-5 inline-flex rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-primary">Retail operations, kept clear</p><h1 className="max-w-3xl text-5xl font-semibold tracking-[-0.045em] md:text-7xl">Run every store from one calm workspace.</h1><p className="mt-6 max-w-xl text-lg leading-8 text-muted-foreground">Memba gives independent retailers a shared view of sales, stock, transfers and the people who keep each location moving.</p><div className="mt-8 flex flex-wrap gap-3"><Link href="/login" className={cn(buttonVariants({ size: "lg" }), "min-h-12")}>Sign in to Memba <ArrowRight className="size-4" aria-hidden="true" /></Link><a href="#features" className={cn(buttonVariants({ variant: "outline", size: "lg" }), "min-h-12")}>Explore the workspace</a></div><p className="mt-5 text-xs text-muted-foreground">Invite-only access · Built for multi-location retail teams</p></div><div className="relative rounded-3xl border bg-card p-3 shadow-2xl shadow-primary/10"><div className="rounded-2xl bg-brand-bg p-5 md:p-7"><div className="flex items-center justify-between border-b pb-5"><div><p className="text-xs font-medium text-muted-foreground">Today at a glance</p><p className="mt-1 text-2xl font-semibold">Hearth & Home Retail</p></div><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">Live workspace</span></div><div className="mt-5 grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border bg-card p-4"><p className="text-xs text-muted-foreground">Sales today</p><p className="mt-3 font-mono text-3xl font-semibold">$24,680</p><p className="mt-2 text-xs text-emerald-700">+12.4% vs yesterday</p></div><div className="rounded-2xl border bg-card p-4"><p className="text-xs text-muted-foreground">Stock health</p><p className="mt-3 font-mono text-3xl font-semibold">94%</p><p className="mt-2 text-xs text-muted-foreground">Across 4 locations</p></div></div><div className="mt-3 rounded-2xl border bg-card p-4"><div className="flex items-center justify-between"><p className="text-sm font-medium">Store activity</p><span className="text-xs text-muted-foreground">Last 7 days</span></div><div className="mt-5 flex h-24 items-end gap-2">{[38,52,44,67,58,82,74,91,78,96,88,100].map((height, index) => <span key={index} className="flex-1 rounded-t-md bg-primary/70" style={{ height: `${height}%` }} />)}</div></div></div></div></section>
+    <section id="features" className="border-y bg-card/60"><div className="mx-auto grid max-w-7xl gap-px px-5 md:grid-cols-3 md:px-8"><Feature icon={BarChart3} title="See the whole business" text="One operational view across organisations, stores, people and performance." /><Feature icon={PackageSearch} title="Keep stock moving" text="Track unique SKUs, adjustments and transfers without spreadsheet drift." /><Feature icon={ShieldCheck} title="Stay in control" text="Invite-only access, manager approvals and a clear audit trail for every action." /></div></section>
+    <footer className="mx-auto flex max-w-7xl flex-col gap-3 px-5 py-10 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between md:px-8"><p>© 2026 Memba. Retail operations, made practical.</p><Link href="/login" className="font-medium text-primary hover:underline">Open workspace →</Link></footer>
+  </main>
 }
+
+function Feature({ icon: Icon, title, text }: { icon: typeof BarChart3; title: string; text: string }) { return <article className="border-x border-transparent px-5 py-10 md:px-8"><Icon className="size-5 text-primary" aria-hidden="true" /><h2 className="mt-5 text-lg font-semibold">{title}</h2><p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">{text}</p></article> }

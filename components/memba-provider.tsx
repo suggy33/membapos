@@ -1,0 +1,309 @@
+"use client"
+
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
+
+import { loadDevelopmentSession, loadLocalData, resetLocalDevelopmentData, saveDevelopmentSession, saveLocalData } from "@/lib/memba/local-store"
+import { defaultDevelopmentSession, seedData } from "@/lib/memba/seed"
+import { adjustInventorySchema, buildRugSku, createProductSchema, createVariantSchema } from "@/lib/memba/catalogue-schemas"
+import { completeSaleSchema } from "@/lib/memba/sales-schemas"
+import { createTransferSchema } from "@/lib/memba/transfer-schemas"
+import type { AdjustInventoryInput, CompleteSaleInput, CreateLocationInput, CreateMemberInput, CreateOrganizationInput, CreateProductInput, CreateTransferInput, CreateVariantInput, DevelopmentSession, MembaData, Membership, Organization, Role, User } from "@/lib/memba/types"
+
+interface MembaContextValue {
+  data: MembaData
+  session: DevelopmentSession
+  membership: Membership
+  user: User
+  organization: Organization | null
+  hydrated: boolean
+  switchMembership: (membershipId: string) => void
+  switchOrganization: (organizationId: string) => void
+  createOrganization: (input: CreateOrganizationInput) => { organizationId: string }
+  createLocation: (input: CreateLocationInput) => void
+  setLocationActive: (locationId: string, active: boolean) => void
+  createMember: (input: CreateMemberInput) => void
+  updateMember: (membershipId: string, role: Exclude<Role, "SUPER_ADMIN">, locationIds: string[]) => void
+  setUserActive: (userId: string, active: boolean) => void
+  createProduct: (input: CreateProductInput) => { productId: string }
+  createVariant: (input: CreateVariantInput) => { variantId: string }
+  setProductActive: (productId: string, active: boolean) => void
+  adjustInventory: (input: AdjustInventoryInput) => void
+  completeSale: (input: CompleteSaleInput) => { orderId: string; orderNumber: string }
+  createTransfer: (input: CreateTransferInput) => { transferId: string }
+  approveTransfer: (transferId: string) => void
+  dispatchTransfer: (transferId: string) => void
+  receiveTransfer: (transferId: string) => void
+  cancelTransfer: (transferId: string) => void
+  openDay: (organizationId: string, locationId: string) => void
+  endDay: (registerId: string, countedCashCents: number, notes?: string) => void
+  startImpersonation: (membershipId: string, reason: string) => void
+  endImpersonation: () => void
+  resetDemo: () => void
+}
+
+const MembaContext = createContext<MembaContextValue | null>(null)
+function nextOrganizationOrderNumber(data: MembaData, organizationId: string) {
+  const highest = data.orders.filter((item) => item.organizationId === organizationId).reduce((max, item) => Math.max(max, Number(item.orderNumber.replace("MEM-", "")) || 0), 10432)
+  return `MEM-${highest + 1}`
+}
+
+export function MembaProvider({ children }: { children: React.ReactNode }) {
+  const [data, setData] = useState<MembaData>(seedData)
+  const [session, setSession] = useState<DevelopmentSession>(defaultDevelopmentSession)
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    const hydrationTask = window.setTimeout(() => {
+      setData(loadLocalData())
+      setSession(loadDevelopmentSession())
+      setHydrated(true)
+    }, 0)
+
+    return () => window.clearTimeout(hydrationTask)
+  }, [])
+
+  useEffect(() => {
+    if (hydrated) saveLocalData(data)
+  }, [data, hydrated])
+
+  useEffect(() => {
+    if (hydrated) saveDevelopmentSession(session)
+  }, [session, hydrated])
+
+  const membership = data.memberships.find((item) => item.id === session.membershipId) ?? data.memberships[0]
+  const user = data.users.find((item) => item.id === membership.userId) ?? data.users[0]
+  const organizationId = membership.role === "SUPER_ADMIN" ? session.organizationId : membership.organizationId
+  const organization = data.organizations.find((item) => item.id === organizationId) ?? null
+
+  const canManageOrganization = useCallback((targetOrganizationId: string) => {
+    return !session.impersonationActorUserId && (membership.role === "SUPER_ADMIN" || (membership.role === "ADMIN" && membership.organizationId === targetOrganizationId))
+  }, [membership.organizationId, membership.role, session.impersonationActorUserId])
+
+  const value = useMemo<MembaContextValue>(() => ({
+    data,
+    session,
+    membership,
+    user,
+    organization,
+    hydrated,
+    switchMembership: (membershipId) => {
+      const next = data.memberships.find((item) => item.id === membershipId)
+      if (!next) return
+      setSession({ userId: next.userId, membershipId: next.id, organizationId: next.organizationId })
+    },
+    switchOrganization: (nextOrganizationId) => {
+      if (membership.role !== "SUPER_ADMIN") return
+      setSession((current) => ({ ...current, organizationId: nextOrganizationId === "platform" ? null : nextOrganizationId }))
+    },
+    createOrganization: (input) => {
+      if (membership.role !== "SUPER_ADMIN" || session.impersonationActorUserId) throw new Error("Only an active super admin can create an organization.")
+      const organizationId = crypto.randomUUID()
+      const locationId = crypto.randomUUID()
+      const adminUserId = crypto.randomUUID()
+      const adminMembershipId = crypto.randomUUID()
+      const organizationCode = input.code.trim().toUpperCase()
+      const locationCode = input.locationCode.trim().toUpperCase()
+
+      if (data.organizations.some((item) => item.code === organizationCode)) throw new Error("That organization code is already in use.")
+      if (data.users.some((item) => item.email.toLowerCase() === input.adminEmail.trim().toLowerCase())) throw new Error("That administrator email already belongs to a user.")
+
+      setData((current) => ({
+        ...current,
+        organizations: [...current.organizations, { id: organizationId, name: input.name.trim(), code: organizationCode, status: "TRIAL", locationIds: [locationId], memberIds: [adminUserId], salesTodayCents: 0, orderCountToday: 0, inventoryCount: 0 }],
+        locations: [...current.locations, { id: locationId, organizationId, name: input.locationName.trim(), code: locationCode, type: input.locationType, suburb: input.suburb.trim(), state: input.state, active: true }],
+        users: [...current.users, { id: adminUserId, name: input.adminName.trim(), email: input.adminEmail.trim().toLowerCase(), initials: input.adminName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase(), active: true }],
+        memberships: [...current.memberships, { id: adminMembershipId, userId: adminUserId, organizationId, role: "ADMIN", locationIds: [locationId] }],
+        activity: [{ id: crypto.randomUUID(), organizationId, title: `${input.name.trim()} started trial`, description: `Organization created by ${user.name}`, timestamp: "Just now", kind: "ORGANIZATION" }, ...current.activity],
+        auditLogs: [{ id: crypto.randomUUID(), actorUserId: user.id, effectiveUserId: user.id, organizationId, action: "ORGANIZATION_CREATED", description: `Created ${input.name.trim()} and assigned ${input.adminName.trim()} as administrator`, timestamp: new Date().toISOString() }, ...current.auditLogs],
+      }))
+      return { organizationId }
+    },
+    createLocation: (input) => {
+      if (!canManageOrganization(input.organizationId)) throw new Error("You do not have permission to add locations for this organization.")
+      const code = input.code.trim().toUpperCase()
+      if (data.locations.some((item) => item.organizationId === input.organizationId && item.code === code)) throw new Error("That location code is already in use for this organization.")
+      const id = crypto.randomUUID()
+      setData((current) => ({ ...current, locations: [...current.locations, { id, organizationId: input.organizationId, name: input.name.trim(), code, type: input.type, suburb: input.suburb.trim(), state: input.state, active: true }], organizations: current.organizations.map((item) => item.id === input.organizationId ? { ...item, locationIds: [...item.locationIds, id] } : item) }))
+    },
+    setLocationActive: (locationId, active) => {
+      const target = data.locations.find((item) => item.id === locationId)
+      if (!target || !canManageOrganization(target.organizationId)) throw new Error("You do not have permission to update this location.")
+      setData((current) => ({ ...current, locations: current.locations.map((item) => item.id === locationId ? { ...item, active } : item) }))
+    },
+    createMember: (input) => {
+      if (!canManageOrganization(input.organizationId)) throw new Error("You do not have permission to invite users to this organization.")
+      if (!input.locationIds.length) throw new Error("Assign at least one location.")
+      const email = input.email.trim().toLowerCase()
+      const existingUser = data.users.find((item) => item.email.toLowerCase() === email)
+      if (existingUser && data.memberships.some((item) => item.userId === existingUser.id && item.organizationId === input.organizationId)) throw new Error("This user already belongs to the organization.")
+      const userId = existingUser?.id ?? crypto.randomUUID()
+      const membershipId = crypto.randomUUID()
+      setData((current) => ({ ...current, users: existingUser ? current.users : [...current.users, { id: userId, name: input.name.trim(), email, initials: input.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase(), active: true }], memberships: [...current.memberships, { id: membershipId, userId, organizationId: input.organizationId, role: input.role, locationIds: input.locationIds }], organizations: current.organizations.map((item) => item.id === input.organizationId ? { ...item, memberIds: [...new Set([...item.memberIds, userId])] } : item) }))
+    },
+    updateMember: (membershipId, role, locationIds) => {
+      const target = data.memberships.find((item) => item.id === membershipId)
+      if (!target?.organizationId || !canManageOrganization(target.organizationId)) throw new Error("You do not have permission to update this membership.")
+      if (!locationIds.length) throw new Error("Assign at least one location.")
+      setData((current) => ({ ...current, memberships: current.memberships.map((item) => item.id === membershipId ? { ...item, role, locationIds } : item) }))
+    },
+    setUserActive: (userId, active) => {
+      const targetMemberships = data.memberships.filter((item) => item.userId === userId && item.organizationId)
+      if (!targetMemberships.some((item) => item.organizationId && canManageOrganization(item.organizationId))) throw new Error("You do not have permission to update this user.")
+      setData((current) => ({ ...current, users: current.users.map((item) => item.id === userId ? { ...item, active } : item) }))
+    },
+    createProduct: (rawInput) => {
+      const input = createProductSchema.parse(rawInput)
+      if (!canManageOrganization(input.organizationId)) throw new Error("You do not have permission to create products for this organization.")
+      if (data.variants.some((item) => item.organizationId === input.organizationId && item.sku === input.sku)) throw new Error("That SKU is already in use for this organization.")
+      if (!data.locations.some((item) => item.id === input.initialLocationId && item.organizationId === input.organizationId && item.active)) throw new Error("Select an active location in this organization.")
+      const productId = crypto.randomUUID(); const variantId = crypto.randomUUID(); const inventoryId = crypto.randomUUID()
+      setData((current) => ({ ...current, products: [...current.products, { id: productId, organizationId: input.organizationId, name: input.name, designNumber: input.designNumber, category: input.category, collection: input.collection, material: input.material, active: true, variantIds: [variantId] }], variants: [...current.variants, { id: variantId, organizationId: input.organizationId, productId, sku: input.sku, barcode: input.barcode, articleNumber: input.articleNumber, colour: input.colour, widthCm: input.widthCm, lengthCm: input.lengthCm, retailPriceCents: input.retailPriceCents, costPriceCents: input.costPriceCents, gstApplicable: input.gstApplicable, active: true }], inventory: [...current.inventory, { id: inventoryId, organizationId: input.organizationId, variantId, locationId: input.initialLocationId, quantityOnHand: input.initialStock, quantityReserved: 0 }], inventoryMovements: input.initialStock ? [{ id: crypto.randomUUID(), organizationId: input.organizationId, variantId, locationId: input.initialLocationId, type: "INITIAL_STOCK", quantityChange: input.initialStock, quantityBefore: 0, quantityAfter: input.initialStock, reason: "Initial stock", notes: "Stock recorded during product creation", createdByUserId: user.id, createdAt: new Date().toISOString() }, ...current.inventoryMovements] : current.inventoryMovements }))
+      return { productId }
+    },
+    createVariant: (rawInput) => {
+      const input = createVariantSchema.parse(rawInput)
+      if (!canManageOrganization(input.organizationId)) throw new Error("You do not have permission to create variants.")
+      const product = data.products.find((item) => item.id === input.productId && item.organizationId === input.organizationId)
+      if (!product) throw new Error("Select a product in this organization.")
+      const sku = buildRugSku(product.designNumber, input.colour, input.lengthCm, input.widthCm)
+      if (data.variants.some((item) => item.organizationId === input.organizationId && item.sku === sku)) throw new Error(`That SKU is already in use: ${sku}.`)
+      const variantId = crypto.randomUUID(); const now = new Date().toISOString()
+      setData((current) => ({ ...current, products: current.products.map((item) => item.id === input.productId ? { ...item, variantIds: [...item.variantIds, variantId] } : item), variants: [...current.variants, { id: variantId, organizationId: input.organizationId, productId: input.productId, sku, supplier: input.supplier, articleNumber: input.articleNumber, barcode: input.barcode, colour: input.colour, description: input.description, features: input.features, origin: input.origin, material: input.material, design: input.design, tags: input.tags, usedIn: input.usedIn, widthCm: input.widthCm, lengthCm: input.lengthCm, heightCm: input.heightCm, weightKg: input.weightKg, unitOfMeasure: "each", retailPriceCents: input.retailPriceCents, costPriceCents: input.costPriceCents, gstApplicable: input.gstApplicable, reorderLevel: input.reorderLevel, washable: input.features.some((feature) => feature.toLowerCase().includes("washable")), active: true }], inventory: [...current.inventory, { id: crypto.randomUUID(), organizationId: input.organizationId, variantId, locationId: input.initialLocationId, quantityOnHand: input.initialStock, quantityReserved: 0 }], inventoryMovements: input.initialStock ? [{ id: crypto.randomUUID(), organizationId: input.organizationId, variantId, locationId: input.initialLocationId, type: "INITIAL_STOCK" as const, quantityChange: input.initialStock, quantityBefore: 0, quantityAfter: input.initialStock, reason: "Initial stock", notes: `Variant created · ${now}`, createdByUserId: user.id, createdAt: now }, ...current.inventoryMovements] : current.inventoryMovements }))
+      return { variantId }
+    },
+    setProductActive: (productId, active) => {
+      const target = data.products.find((item) => item.id === productId)
+      if (!target || !canManageOrganization(target.organizationId)) throw new Error("You do not have permission to update this product.")
+      setData((current) => ({ ...current, products: current.products.map((item) => item.id === productId ? { ...item, active } : item), variants: current.variants.map((item) => item.productId === productId ? { ...item, active } : item) }))
+    },
+    adjustInventory: (rawInput) => {
+      const input = adjustInventorySchema.parse(rawInput)
+      const canAdjust = !session.impersonationActorUserId && (membership.role === "SUPER_ADMIN" || ((membership.role === "ADMIN" || membership.role === "STORE_MANAGER") && membership.organizationId === input.organizationId))
+      if (!canAdjust) throw new Error("You do not have permission to adjust inventory for this organization.")
+      if (membership.role === "STORE_MANAGER" && !membership.locationIds.includes(input.locationId)) throw new Error("Managers can adjust only their assigned locations.")
+      const existing = data.inventory.find((item) => item.variantId === input.variantId && item.locationId === input.locationId && item.organizationId === input.organizationId)
+      const before = existing?.quantityOnHand ?? 0; const after = before + input.quantityChange
+      if (after < (existing?.quantityReserved ?? 0)) throw new Error(`This adjustment would leave fewer items than the ${existing?.quantityReserved ?? 0} currently reserved.`)
+      const inventoryId = existing?.id ?? crypto.randomUUID()
+      setData((current) => ({ ...current, inventory: existing ? current.inventory.map((item) => item.id === inventoryId ? { ...item, quantityOnHand: after } : item) : [...current.inventory, { id: inventoryId, organizationId: input.organizationId, variantId: input.variantId, locationId: input.locationId, quantityOnHand: after, quantityReserved: 0 }], inventoryMovements: [{ id: crypto.randomUUID(), organizationId: input.organizationId, variantId: input.variantId, locationId: input.locationId, type: input.quantityChange > 0 ? "ADJUSTMENT_IN" : "ADJUSTMENT_OUT", quantityChange: input.quantityChange, quantityBefore: before, quantityAfter: after, reason: input.reason, notes: input.notes, createdByUserId: user.id, createdAt: new Date().toISOString() }, ...current.inventoryMovements] }))
+    },
+    completeSale: (rawInput) => {
+      const input = completeSaleSchema.parse(rawInput)
+      if (input.organizationId !== (membership.role === "SUPER_ADMIN" ? input.organizationId : membership.organizationId)) throw new Error("You do not have access to this organization.")
+      if (membership.role === "STORE_MANAGER" && !membership.locationIds.includes(input.locationId)) throw new Error("You can sell only from your assigned locations.")
+      if (membership.role === "STORE_USER" && !membership.locationIds.includes(input.locationId)) throw new Error("You can sell only from your assigned location.")
+      const hasDiscount = input.items.some((item) => item.discountCents > 0)
+      const isPrivilegedBilling = membership.role === "STORE_MANAGER" || membership.role === "ADMIN" || membership.role === "SUPER_ADMIN"
+      let approvalUserId: string | undefined
+      if (hasDiscount && !isPrivilegedBilling) {
+        const enteredCode = input.approvalCode?.trim()
+        const approver = data.memberships.find((item) => item.organizationId === input.organizationId && ["STORE_MANAGER", "ADMIN"].includes(item.role) && (item.approvalCode ?? "2468") === enteredCode)
+        if (!approver) throw new Error("A manager approval code is required for discounted sales.")
+        approvalUserId = approver.userId
+      } else if (hasDiscount) approvalUserId = user.id
+
+      const calculatedItems = input.items.map((item) => {
+        const variant = data.variants.find((candidate) => candidate.id === item.variantId && candidate.organizationId === input.organizationId && candidate.active)
+        if (!variant) throw new Error("One of the selected products is no longer available.")
+        const inventory = data.inventory.find((record) => record.variantId === item.variantId && record.locationId === input.locationId && record.organizationId === input.organizationId)
+        const available = (inventory?.quantityOnHand ?? 0) - (inventory?.quantityReserved ?? 0)
+        if (available < item.qty) throw new Error(`Only ${available} available for ${variant.sku} at this location.`)
+        const lineTotalCents = (variant.retailPriceCents * item.qty) - item.discountCents
+        if (item.discountCents > variant.retailPriceCents * item.qty) throw new Error(`Discount cannot exceed the value of ${variant.sku}.`)
+        const product = data.products.find((candidate) => candidate.id === variant.productId)
+        return { input: item, variant, inventory, lineTotalCents, description: `${product?.name ?? "Product"} / ${variant.colour} / ${variant.widthCm} × ${variant.lengthCm} cm` }
+      })
+      const subtotalCents = calculatedItems.reduce((sum, item) => sum + item.variant.retailPriceCents * item.input.qty, 0)
+      const discountTotalCents = calculatedItems.reduce((sum, item) => sum + item.input.discountCents, 0)
+      const totalCents = calculatedItems.reduce((sum, item) => sum + item.lineTotalCents, 0)
+      const gstTotalCents = calculatedItems.reduce((sum, item) => sum + (item.variant.gstApplicable ? Math.round(item.lineTotalCents / 11) : 0), 0)
+      if (input.amountPaidCents !== totalCents) throw new Error(`Payment must match the sale total of $${(totalCents / 100).toFixed(2)}.`)
+      const orderId = crypto.randomUUID(); const orderNumber = nextOrganizationOrderNumber(data, input.organizationId); const now = new Date().toISOString()
+      const order = { id: orderId, organizationId: input.organizationId, orderNumber, locationId: input.locationId, salespersonUserId: user.id, approvalUserId, status: "COMPLETED" as const, items: calculatedItems.map((item) => ({ id: crypto.randomUUID(), variantId: item.variant.id, skuSnapshot: item.variant.sku, descriptionSnapshot: item.description, qty: item.input.qty, unitPriceCents: item.variant.retailPriceCents, discountCents: item.input.discountCents, lineTotalCents: item.lineTotalCents })), subtotalCents, discountTotalCents, gstTotalCents, totalCents, amountPaidCents: input.amountPaidCents, paymentMethod: input.paymentMethod, createdAt: now, completedAt: now }
+      setData((current) => ({ ...current, orders: [order, ...current.orders], organizations: current.organizations.map((item) => item.id === input.organizationId ? { ...item, salesTodayCents: item.salesTodayCents + totalCents, orderCountToday: item.orderCountToday + 1, inventoryCount: item.inventoryCount - input.items.reduce((sum, line) => sum + line.qty, 0) } : item), inventory: current.inventory.map((record) => { const sold = calculatedItems.find((item) => item.inventory?.id === record.id); return sold ? { ...record, quantityOnHand: record.quantityOnHand - sold.input.qty } : record }), inventoryMovements: [...calculatedItems.map((item) => ({ id: crypto.randomUUID(), organizationId: input.organizationId, variantId: item.variant.id, locationId: input.locationId, type: "SALE" as const, quantityChange: -item.input.qty, quantityBefore: item.inventory?.quantityOnHand ?? 0, quantityAfter: (item.inventory?.quantityOnHand ?? 0) - item.input.qty, reason: orderNumber, notes: `Sale completed via POS · ${input.paymentMethod}`, createdByUserId: user.id, createdAt: now })), ...current.inventoryMovements], activity: [{ id: crypto.randomUUID(), organizationId: input.organizationId, title: `Sale ${orderNumber} completed`, description: `$${(totalCents / 100).toFixed(2)} · ${input.paymentMethod}`, timestamp: "Just now", kind: "SALE" }, ...current.activity] }))
+      return { orderId, orderNumber }
+    },
+    createTransfer: (rawInput) => {
+      const input = createTransferSchema.parse(rawInput)
+      if (!canManageOrganization(input.organizationId) && !(membership.role === "STORE_USER" && membership.organizationId === input.organizationId)) throw new Error("You do not have permission to request transfers for this organization.")
+      if (membership.role !== "SUPER_ADMIN" && membership.role !== "ADMIN" && !membership.locationIds.includes(input.fromLocationId)) throw new Error("You can request transfers only from your assigned locations.")
+      if (!data.locations.some((item) => item.id === input.fromLocationId && item.organizationId === input.organizationId && item.active) || !data.locations.some((item) => item.id === input.toLocationId && item.organizationId === input.organizationId && item.active)) throw new Error("Choose two active locations in the same organization.")
+      for (const item of input.items) { const variant = data.variants.find((candidate) => candidate.id === item.variantId && candidate.organizationId === input.organizationId && candidate.active); const stock = data.inventory.find((record) => record.variantId === item.variantId && record.locationId === input.fromLocationId); if (!variant || !stock || stock.quantityOnHand - stock.quantityReserved < item.quantity) throw new Error(`Not enough available stock for ${variant?.sku ?? "this variant"}.`) }
+      const transferId = crypto.randomUUID(); const transferNumber = `TRN-${data.transfers.length + 205}`; const now = new Date().toISOString()
+      setData((current) => ({ ...current, transfers: [{ id: transferId, organizationId: input.organizationId, transferNumber, fromLocationId: input.fromLocationId, toLocationId: input.toLocationId, status: "REQUESTED", items: input.items.map((item) => ({ id: crypto.randomUUID(), ...item })), requestedByUserId: user.id, notes: input.notes, createdAt: now }, ...current.transfers], activity: [{ id: crypto.randomUUID(), organizationId: input.organizationId, title: `Transfer ${transferNumber} requested`, description: `${input.items.length} item${input.items.length === 1 ? "" : "s"} · Awaiting approval`, timestamp: "Just now", kind: "TRANSFER" }, ...current.activity] }))
+      return { transferId }
+    },
+    approveTransfer: (transferId) => {
+      const transfer = data.transfers.find((item) => item.id === transferId)
+      if (!transfer || transfer.status !== "REQUESTED") throw new Error("This transfer is no longer awaiting approval.")
+      if (!canManageOrganization(transfer.organizationId) && membership.role !== "STORE_MANAGER") throw new Error("Manager approval is required for transfers.")
+      if (membership.role === "STORE_MANAGER" && !membership.locationIds.includes(transfer.toLocationId)) throw new Error("You can approve transfers only for your assigned destination locations.")
+      setData((current) => ({ ...current, transfers: current.transfers.map((item) => item.id === transferId ? { ...item, status: "APPROVED" as const, approvedByUserId: user.id, approvedAt: new Date().toISOString() } : item) }))
+    },
+    dispatchTransfer: (transferId) => {
+      const transfer = data.transfers.find((item) => item.id === transferId)
+      if (!transfer || transfer.status !== "APPROVED") throw new Error("Only approved transfers can be dispatched.")
+      if (!canManageOrganization(transfer.organizationId) && membership.role !== "STORE_MANAGER") throw new Error("Manager dispatch is required.")
+      if (membership.role === "STORE_MANAGER" && !membership.locationIds.includes(transfer.fromLocationId)) throw new Error("You can dispatch only from your assigned source locations.")
+      for (const item of transfer.items) { const stock = data.inventory.find((record) => record.variantId === item.variantId && record.locationId === transfer.fromLocationId); if (!stock || stock.quantityOnHand - stock.quantityReserved < item.quantity) throw new Error("Available stock changed. Review this transfer before dispatching.") }
+      const now = new Date().toISOString()
+      setData((current) => ({ ...current, transfers: current.transfers.map((item) => item.id === transferId ? { ...item, status: "IN_TRANSIT" as const, shippedAt: now } : item), inventory: current.inventory.map((record) => { const line = transfer.items.find((item) => item.variantId === record.variantId && record.locationId === transfer.fromLocationId); return line ? { ...record, quantityOnHand: record.quantityOnHand - line.quantity } : record }), inventoryMovements: [...transfer.items.map((item) => { const stock = data.inventory.find((record) => record.variantId === item.variantId && record.locationId === transfer.fromLocationId)!; return { id: crypto.randomUUID(), organizationId: transfer.organizationId, variantId: item.variantId, locationId: transfer.fromLocationId, type: "TRANSFER_OUT" as const, quantityChange: -item.quantity, quantityBefore: stock.quantityOnHand, quantityAfter: stock.quantityOnHand - item.quantity, reason: transfer.transferNumber, notes: "Dispatched", createdByUserId: user.id, createdAt: now } }), ...current.inventoryMovements] }))
+    },
+    receiveTransfer: (transferId) => {
+      const transfer = data.transfers.find((item) => item.id === transferId)
+      if (!transfer || transfer.status !== "IN_TRANSIT") throw new Error("Only in-transit transfers can be received.")
+      if (!canManageOrganization(transfer.organizationId) && membership.role !== "STORE_MANAGER") throw new Error("Manager receipt is required.")
+      if (membership.role === "STORE_MANAGER" && !membership.locationIds.includes(transfer.toLocationId)) throw new Error("You can receive only at your assigned destination locations.")
+      const now = new Date().toISOString()
+      setData((current) => ({ ...current, transfers: current.transfers.map((item) => item.id === transferId ? { ...item, status: "RECEIVED" as const, receivedByUserId: user.id, receivedAt: now } : item), inventory: current.inventory.map((record) => { const line = transfer.items.find((item) => item.variantId === record.variantId && record.locationId === transfer.toLocationId); return line ? { ...record, quantityOnHand: record.quantityOnHand + line.quantity } : record }).concat(transfer.items.filter((item) => !current.inventory.some((record) => record.variantId === item.variantId && record.locationId === transfer.toLocationId)).map((item) => ({ id: crypto.randomUUID(), organizationId: transfer.organizationId, variantId: item.variantId, locationId: transfer.toLocationId, quantityOnHand: item.quantity, quantityReserved: 0 }))), inventoryMovements: [...transfer.items.map((item) => { const stock = data.inventory.find((record) => record.variantId === item.variantId && record.locationId === transfer.toLocationId); return { id: crypto.randomUUID(), organizationId: transfer.organizationId, variantId: item.variantId, locationId: transfer.toLocationId, type: "TRANSFER_IN" as const, quantityChange: item.quantity, quantityBefore: stock?.quantityOnHand ?? 0, quantityAfter: (stock?.quantityOnHand ?? 0) + item.quantity, reason: transfer.transferNumber, notes: "Received", createdByUserId: user.id, createdAt: now } }), ...current.inventoryMovements] }))
+    },
+    cancelTransfer: (transferId) => {
+      const transfer = data.transfers.find((item) => item.id === transferId)
+      if (!transfer || ["RECEIVED", "CANCELLED"].includes(transfer.status)) throw new Error("This transfer cannot be cancelled.")
+      if (!canManageOrganization(transfer.organizationId)) throw new Error("Only an organization administrator can cancel this transfer.")
+      setData((current) => ({ ...current, transfers: current.transfers.map((item) => item.id === transferId ? { ...item, status: "CANCELLED" as const } : item) }))
+    },
+    openDay: (organizationId, locationId) => {
+      if (session.impersonationActorUserId || !membership.locationIds.includes(locationId) && membership.role !== "SUPER_ADMIN" && membership.role !== "ADMIN") throw new Error("You do not have access to open this location.")
+      const businessDate = new Date().toISOString().slice(0, 10)
+      if (data.dailyRegisters.some((item) => item.organizationId === organizationId && item.locationId === locationId && item.businessDate === businessDate && item.status === "OPEN")) throw new Error("This day is already open at this location.")
+      setData((current) => ({ ...current, dailyRegisters: [{ id: crypto.randomUUID(), organizationId, locationId, businessDate, status: "OPEN", openedByUserId: user.id, openedAt: new Date().toISOString() }, ...current.dailyRegisters] }))
+    },
+    endDay: (registerId, countedCashCents, notes) => {
+      const register = data.dailyRegisters.find((item) => item.id === registerId)
+      if (!register || register.status !== "OPEN") throw new Error("This day is not open.")
+      if (session.impersonationActorUserId || (membership.role !== "SUPER_ADMIN" && membership.role !== "ADMIN" && !membership.locationIds.includes(register.locationId))) throw new Error("You do not have access to end this day.")
+      if (!Number.isInteger(countedCashCents) || countedCashCents < 0) throw new Error("Enter the counted cash amount.")
+      const expectedCashCents = data.orders.filter((order) => order.organizationId === register.organizationId && order.locationId === register.locationId && order.paymentMethod === "CASH" && order.createdAt.slice(0, 10) === register.businessDate).reduce((sum, order) => sum + order.totalCents, 0)
+      setData((current) => ({ ...current, dailyRegisters: current.dailyRegisters.map((item) => item.id === registerId ? { ...item, status: "CLOSED" as const, closedByUserId: user.id, closedAt: new Date().toISOString(), expectedCashCents, countedCashCents, varianceCents: countedCashCents - expectedCashCents, notes } : item) }))
+    },
+    startImpersonation: (membershipId, reason) => {
+      if (membership.role !== "SUPER_ADMIN" || session.impersonationActorUserId) throw new Error("Only an active super admin can start impersonation.")
+      const target = data.memberships.find((item) => item.id === membershipId && item.organizationId)
+      if (!target || !reason.trim()) throw new Error("Select a valid user and provide an audit reason.")
+      setData((current) => ({ ...current, auditLogs: [{ id: crypto.randomUUID(), actorUserId: user.id, effectiveUserId: target.userId, organizationId: target.organizationId, action: "IMPERSONATION_STARTED", description: reason.trim(), timestamp: new Date().toISOString() }, ...current.auditLogs] }))
+      setSession({ userId: target.userId, membershipId: target.id, organizationId: target.organizationId, impersonationActorUserId: user.id, impersonationReason: reason.trim() })
+    },
+    endImpersonation: () => {
+      if (!session.impersonationActorUserId) return
+      const actorUserId = session.impersonationActorUserId
+      const actorMembership = data.memberships.find((item) => item.userId === actorUserId && item.role === "SUPER_ADMIN")
+      if (!actorMembership) return
+      setData((current) => ({ ...current, auditLogs: [{ id: crypto.randomUUID(), actorUserId, effectiveUserId: user.id, organizationId: membership.organizationId, action: "IMPERSONATION_ENDED", description: `Ended impersonation of ${user.name}`, timestamp: new Date().toISOString() }, ...current.auditLogs] }))
+      setSession({ userId: actorUserId, membershipId: actorMembership.id, organizationId: null })
+    },
+    resetDemo: () => {
+      resetLocalDevelopmentData()
+      setData(structuredClone(seedData))
+      setSession(defaultDevelopmentSession)
+    },
+  }), [canManageOrganization, data, hydrated, membership, organization, session, user])
+
+  return <MembaContext.Provider value={value}>{children}</MembaContext.Provider>
+}
+
+export function useMemba() {
+  const context = useContext(MembaContext)
+  if (!context) throw new Error("useMemba must be used within MembaProvider")
+  return context
+}

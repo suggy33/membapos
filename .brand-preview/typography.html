@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Memba typography picker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Instrument+Serif&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:oklch(0.975 0.01 105);--fg:oklch(0.19 0.015 115);--card:#fff;--primary:oklch(0.40 0.075 125);--primary-fg:#fff;--muted-fg:oklch(0.43 0.025 115);--border:oklch(0.875 0.015 110)}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:Inter,sans-serif}.top{position:sticky;top:0;z-index:3;padding:16px 24px;background:color-mix(in oklch,var(--bg) 88%,transparent);border-bottom:1px solid var(--border);backdrop-filter:blur(12px)}.top h1{font-size:15px;margin:0}.top p{font-size:12px;color:var(--muted-fg);margin:3px 0 0}.wrap{max-width:920px;margin:auto;padding:32px 20px 80px;display:grid;gap:24px}.pair{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:26px}.head{display:flex;gap:12px;align-items:center;border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:20px}.num{display:grid;place-items:center;width:29px;height:29px;border-radius:50%;background:var(--primary);color:var(--primary-fg);font-weight:700}.head h2{font:600 16px Inter,sans-serif;margin:0}.tags{font:11px Inter,sans-serif;color:var(--muted-fg);margin-left:auto}.display{font-family:var(--serif,var(--sans));font-size:36px;font-weight:600;letter-spacing:-.03em;line-height:1.1;margin:0 0 12px}.body{font-family:var(--sans);font-size:14px;line-height:1.6;max-width:650px;margin:0 0 18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{border:1px solid var(--border);border-radius:10px;padding:14px}.label{font:11px var(--sans);color:var(--muted-fg);text-transform:uppercase;letter-spacing:.07em;margin:0 0 6px}.value{font:500 22px var(--mono);margin:0}.sub{font:12px var(--sans);color:var(--muted-fg);margin:5px 0 0}.button{min-height:40px;margin-top:14px;padding:0 15px;border:0;border-radius:9px;background:var(--primary);color:var(--primary-fg);font:600 13px var(--sans)}.foot{text-align:center;color:var(--muted-fg);font-size:13px}.foot code{background:#0001;padding:3px 6px;border-radius:4px}@media(max-width:650px){.grid{grid-template-columns:1fr}.display{font-size:30px}}button:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+  </style>
+</head>
+<body><header class="top"><h1>Typography for Memba</h1><p>Rendered on Olive Gallery</p></header><main class="wrap" id="list"></main>
+<script>
+const pairs=[
+['Instrument Serif + Inter','premium · editorial · calm',"'Inter',sans-serif","'JetBrains Mono',monospace","'Instrument Serif',serif"],
+['Geist + Geist Mono','minimal · modern · precise',"'Geist',sans-serif","'Geist Mono',monospace",null],
+['Inter + JetBrains Mono','neutral · trusted · operational',"'Inter',sans-serif","'JetBrains Mono',monospace",null],
+['Manrope + JetBrains Mono','premium · clear · contemporary',"'Manrope',sans-serif","'JetBrains Mono',monospace",null],
+['IBM Plex Sans + Mono','serious · structured · dependable',"'IBM Plex Sans',sans-serif","'IBM Plex Mono',monospace",null],
+['Fraunces + Inter','warm · distinctive · retail-led',"'Inter',sans-serif","'IBM Plex Mono',monospace","'Fraunces',serif"]
+];
+const root=document.querySelector('#list');root.innerHTML=pairs.map((p,i)=>`<article class="pair" style="--sans:${p[2]};--mono:${p[3]};${p[4]?`--serif:${p[4]}`:''}"><header class="head"><span class="num">${i+1}</span><h2>${p[0]}</h2><span class="tags">${p[1]}</span></header><h3 class="display">Know where every piece is.</h3><p class="body">Memba keeps inventory, sales and transfers simple across every store and warehouse—from rugs today to the wider home collection tomorrow.</p><div class="grid"><div class="card"><p class="label">Sales today</p><p class="value">$8,450.00</p><p class="sub">12 completed orders · +8.4%</p></div><div class="card"><p class="label">Inventory</p><p class="value">1,885</p><p class="sub">Across 5 locations</p></div></div><button class="button">+ New sale</button></article>`).join('')+'<p class="foot">Pick <code>1–6</code>, or say <code>skip</code> for Inter + JetBrains Mono.</p>';
+</script></body></html>
