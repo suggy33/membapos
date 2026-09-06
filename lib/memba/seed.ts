@@ -20,6 +20,7 @@ export const seedData: MembaData = {
       salesTodayCents: 2845000,
       orderCountToday: 34,
       inventoryCount: 1885,
+      maxLocations: 8,
     },
     {
       id: "org-weave-living",
@@ -31,6 +32,7 @@ export const seedData: MembaData = {
       salesTodayCents: 672000,
       orderCountToday: 9,
       inventoryCount: 462,
+      maxLocations: 5,
     },
   ],
   locations: [

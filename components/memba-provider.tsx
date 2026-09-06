@@ -19,6 +19,8 @@ interface MembaContextValue {
   switchMembership: (membershipId: string) => void
   switchOrganization: (organizationId: string) => void
   createOrganization: (input: CreateOrganizationInput) => { organizationId: string }
+  setOrganizationLocationLimit: (organizationId: string, maxLocations: number) => void
+  setApprovalCode: (approvalCode: string) => void
   createLocation: (input: CreateLocationInput) => void
   setLocationActive: (locationId: string, active: boolean) => void
   createMember: (input: CreateMemberInput) => void
@@ -109,7 +111,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
 
       setData((current) => ({
         ...current,
-        organizations: [...current.organizations, { id: organizationId, name: input.name.trim(), code: organizationCode, status: "TRIAL", locationIds: [locationId], memberIds: [adminUserId], salesTodayCents: 0, orderCountToday: 0, inventoryCount: 0 }],
+        organizations: [...current.organizations, { id: organizationId, name: input.name.trim(), code: organizationCode, status: "TRIAL", locationIds: [locationId], memberIds: [adminUserId], salesTodayCents: 0, orderCountToday: 0, inventoryCount: 0, maxLocations: Math.max(1, Math.floor(input.maxLocations || 1)) }],
         locations: [...current.locations, { id: locationId, organizationId, name: input.locationName.trim(), code: locationCode, type: input.locationType, suburb: input.suburb.trim(), state: input.state, active: true }],
         users: [...current.users, { id: adminUserId, name: input.adminName.trim(), email: input.adminEmail.trim().toLowerCase(), initials: input.adminName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase(), active: true }],
         memberships: [...current.memberships, { id: adminMembershipId, userId: adminUserId, organizationId, role: "ADMIN", locationIds: [locationId] }],
@@ -118,8 +120,25 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       }))
       return { organizationId }
     },
+    setOrganizationLocationLimit: (organizationId, maxLocations) => {
+      if (membership.role !== "SUPER_ADMIN" || session.impersonationActorUserId) throw new Error("Only an active super admin can change location limits.")
+      const limit = Math.floor(maxLocations)
+      const activeCount = data.locations.filter((item) => item.organizationId === organizationId && item.active).length
+      if (!Number.isFinite(limit) || limit < 1 || limit < activeCount) throw new Error(`Location limit must be at least ${activeCount}.`)
+      if (!data.organizations.some((item) => item.id === organizationId)) throw new Error("Organization not found.")
+      setData((current) => ({ ...current, organizations: current.organizations.map((item) => item.id === organizationId ? { ...item, maxLocations: limit } : item) }))
+    },
+    setApprovalCode: (approvalCode) => {
+      if (session.impersonationActorUserId || !["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"].includes(membership.role)) throw new Error("Only managers and above can set a discount approval code.")
+      const code = approvalCode.trim()
+      if (code && !/^\d{4,12}$/.test(code)) throw new Error("Use a 4–12 digit approval code, or leave it blank to clear it.")
+      setData((current) => ({ ...current, memberships: current.memberships.map((item) => item.id === membership.id ? { ...item, approvalCode: code || undefined } : item) }))
+    },
     createLocation: (input) => {
       if (!canManageOrganization(input.organizationId)) throw new Error("You do not have permission to add locations for this organization.")
+      const targetOrganization = data.organizations.find((item) => item.id === input.organizationId)
+      const activeLocationCount = data.locations.filter((item) => item.organizationId === input.organizationId && item.active).length
+      if (targetOrganization && activeLocationCount >= targetOrganization.maxLocations) throw new Error(`This organization has reached its ${targetOrganization.maxLocations}-location limit.`)
       const code = input.code.trim().toUpperCase()
       if (data.locations.some((item) => item.organizationId === input.organizationId && item.code === code)) throw new Error("That location code is already in use for this organization.")
       const id = crypto.randomUUID()
@@ -197,7 +216,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       let approvalUserId: string | undefined
       if (hasDiscount && !isPrivilegedBilling) {
         const enteredCode = input.approvalCode?.trim()
-        const approver = data.memberships.find((item) => item.organizationId === input.organizationId && ["STORE_MANAGER", "ADMIN"].includes(item.role) && (item.approvalCode ?? "2468") === enteredCode)
+        const approver = data.memberships.find((item) => (item.organizationId === input.organizationId || item.role === "SUPER_ADMIN") && ["SUPER_ADMIN", "STORE_MANAGER", "ADMIN"].includes(item.role) && item.approvalCode === enteredCode)
         if (!approver) throw new Error("A manager approval code is required for discounted sales.")
         approvalUserId = approver.userId
       } else if (hasDiscount) approvalUserId = user.id
@@ -225,7 +244,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
     },
     createTransfer: (rawInput) => {
       const input = createTransferSchema.parse(rawInput)
-      if (!canManageOrganization(input.organizationId) && !(membership.role === "STORE_USER" && membership.organizationId === input.organizationId)) throw new Error("You do not have permission to request transfers for this organization.")
+      if (!canManageOrganization(input.organizationId) && membership.role !== "STORE_MANAGER") throw new Error("You do not have permission to request transfers for this organization.")
       if (membership.role !== "SUPER_ADMIN" && membership.role !== "ADMIN" && !membership.locationIds.includes(input.fromLocationId)) throw new Error("You can request transfers only from your assigned locations.")
       if (!data.locations.some((item) => item.id === input.fromLocationId && item.organizationId === input.organizationId && item.active) || !data.locations.some((item) => item.id === input.toLocationId && item.organizationId === input.organizationId && item.active)) throw new Error("Choose two active locations in the same organization.")
       for (const item of input.items) { const variant = data.variants.find((candidate) => candidate.id === item.variantId && candidate.organizationId === input.organizationId && candidate.active); const stock = data.inventory.find((record) => record.variantId === item.variantId && record.locationId === input.fromLocationId); if (!variant || !stock || stock.quantityOnHand - stock.quantityReserved < item.quantity) throw new Error(`Not enough available stock for ${variant?.sku ?? "this variant"}.`) }

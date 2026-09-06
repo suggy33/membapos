@@ -12,7 +12,7 @@ export function loadLocalData(): MembaData {
 
   try {
     const parsed = JSON.parse(raw) as MembaData
-    return parsed.schemaVersion === 1 ? { ...parsed, auditLogs: parsed.auditLogs ?? [], products: parsed.products ?? seedData.products, variants: parsed.variants ?? seedData.variants, inventory: parsed.inventory ?? seedData.inventory, inventoryMovements: parsed.inventoryMovements ?? seedData.inventoryMovements, orders: parsed.orders ?? [], transfers: parsed.transfers ?? [], dailyRegisters: parsed.dailyRegisters ?? [] } : structuredClone(seedData)
+    return parsed.schemaVersion === 1 ? { ...parsed, organizations: parsed.organizations.map((item) => ({ ...item, maxLocations: item.maxLocations ?? Math.max(1, parsed.locations.filter((location) => location.organizationId === item.id && location.active).length) })), auditLogs: parsed.auditLogs ?? [], products: parsed.products ?? seedData.products, variants: parsed.variants ?? seedData.variants, inventory: parsed.inventory ?? seedData.inventory, inventoryMovements: parsed.inventoryMovements ?? seedData.inventoryMovements, orders: parsed.orders ?? [], transfers: parsed.transfers ?? [], dailyRegisters: parsed.dailyRegisters ?? [] } : structuredClone(seedData)
   } catch {
     return structuredClone(seedData)
   }

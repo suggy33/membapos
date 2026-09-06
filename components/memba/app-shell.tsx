@@ -1,6 +1,8 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
+import { usePathname } from "next/navigation"
 import { useState } from "react"
 import {
   ArrowRightLeft,
@@ -31,10 +33,10 @@ const navItems = [
   { label: "Orders", href: "/orders", icon: ShoppingBag, roles: ["ADMIN", "STORE_MANAGER", "STORE_USER"] },
   { label: "Products", href: "/products", icon: PackageSearch, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
   { label: "Inventory", href: "/inventory", icon: PackageSearch, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
-  { label: "Transfers", href: "/transfers", icon: ArrowRightLeft, roles: ["ADMIN", "STORE_MANAGER", "STORE_USER"] },
-  { label: "Locations", href: "#locations", icon: Store, roles: ["SUPER_ADMIN", "ADMIN"] },
-  { label: "People", href: "#people", icon: Users, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"] },
-  { label: "Reports", href: "/reports", icon: ClipboardList, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"] },
+  { label: "Transfers", href: "/transfers", icon: ArrowRightLeft, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"] },
+  { label: "Locations", href: "/organizations", icon: Store, roles: ["SUPER_ADMIN", "ADMIN"] },
+  { label: "People", href: "/organizations", icon: Users, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"] },
+  { label: "Reports", href: "/reports", icon: ClipboardList, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
 ] satisfies Array<{ label: string; href: string; icon: typeof LayoutDashboard; roles: Role[] }>
 
 const roleLabels: Record<Role, string> = {
@@ -46,6 +48,7 @@ const roleLabels: Record<Role, string> = {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const pathname = usePathname()
   const { data, endImpersonation, membership, organization, session, switchMembership, switchOrganization, user } = useMemba()
   const visibleItems = navItems.filter((item) => item.roles.includes(membership.role))
 
@@ -92,9 +95,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <aside className={cn("fixed bottom-0 left-0 top-10 z-50 flex w-64 flex-col border-r bg-sidebar text-sidebar-foreground transition-transform duration-200 motion-reduce:transition-none md:translate-x-0", mobileOpen ? "translate-x-0" : "-translate-x-full")}>
         <div className="flex h-16 items-center justify-between border-b px-5">
-          <Link href="/" className="flex min-h-10 items-center gap-2 rounded-md font-semibold tracking-tight focus-visible:ring-2 focus-visible:ring-sidebar-ring">
-            <span className="grid size-8 place-items-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">M</span>
-            Memba
+          <Link href="/dashboard" className="flex min-h-10 items-center rounded-md focus-visible:ring-2 focus-visible:ring-sidebar-ring">
+            <Image src="/logo.svg" alt="Memba" width={151} height={32} className="h-8 w-auto" priority />
           </Link>
           <button type="button" className="grid size-10 place-items-center rounded-md hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring md:hidden" aria-label="Close navigation" onClick={() => setMobileOpen(false)}>
             <X className="size-5" aria-hidden="true" />
@@ -128,13 +130,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 overflow-y-auto p-3" aria-label="Main navigation">
           <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Workspace</p>
           <ul className="space-y-1">
-            {visibleItems.map((item, index) => (
+            {visibleItems.map((item) => {
+              const href = item.label === "Locations" && organization ? `/organizations/${organization.id}/locations` : item.label === "People" && organization ? `/organizations/${organization.id}/people` : item.href
+              const isActive = item.label === "Locations" || item.label === "People" ? Boolean(organization) && (pathname === href || pathname.startsWith(`${href}/`)) : href === "/dashboard" ? pathname === "/dashboard" : pathname === href || pathname.startsWith(`${href}/`)
+              return (
               <li key={item.label}>
-                <Link href={item.href} onClick={() => setMobileOpen(false)} className={cn("flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-sidebar-ring", index === 0 ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground")}>
+                <Link href={href} onClick={() => setMobileOpen(false)} className={cn("flex min-h-11 items-center gap-3 rounded-md px-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-sidebar-ring", isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground")}>
                   <item.icon className="size-4" aria-hidden="true" />{item.label}
                 </Link>
               </li>
-            ))}
+              )
+            })}
           </ul>
         </nav>
 

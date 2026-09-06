@@ -14,6 +14,7 @@ export interface Organization {
   salesTodayCents: number
   orderCountToday: number
   inventoryCount: number
+  maxLocations: number
 }
 
 export interface Location {
@@ -101,6 +102,7 @@ export interface CreateOrganizationInput {
   locationType: LocationType
   suburb: string
   state: string
+  maxLocations: number
 }
 
 export interface CreateLocationInput {

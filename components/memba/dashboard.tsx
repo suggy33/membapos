@@ -49,6 +49,7 @@ export function Dashboard() {
   const totalOrders = scopedOrganizations.reduce((sum, item) => sum + item.orderCountToday, 0)
   const totalInventory = scopedOrganizations.reduce((sum, item) => sum + item.inventoryCount, 0)
   const title = membership.role === "SUPER_ADMIN" && !organization ? "Platform overview" : `${organization?.name ?? "Your store"} overview`
+  const quickActions = [{ label: membership.role === "SUPER_ADMIN" ? "Add organization" : "Start a sale", description: membership.role === "SUPER_ADMIN" ? "Set up a new retail business" : "Create an order in under a minute", icon: membership.role === "SUPER_ADMIN" ? Building2 : Plus, href: membership.role === "SUPER_ADMIN" ? "/organizations/new" : "/sales/new", primary: true }, { label: "Open or close day", description: "Open the till and reconcile cash", icon: ReceiptText, href: "/reports" }, { label: "Find inventory", description: "Search every location", icon: PackageSearch, href: "/inventory" }, ...(membership.role === "SUPER_ADMIN" || membership.role === "ADMIN" || membership.role === "STORE_MANAGER" ? [{ label: "Review transfers", description: "Approve, dispatch or receive", icon: ArrowRightLeft, href: "/transfers" }] : []), ...(membership.role === "SUPER_ADMIN" || membership.role === "ADMIN" ? [{ label: "Manage people", description: "Roles, locations and access", icon: Users, href: organization ? `/organizations/${organization.id}/people` : "/organizations" }] : [])]
 
   if (!hydrated) return <DashboardSkeleton />
 
@@ -63,8 +64,18 @@ export function Dashboard() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={resetDemo}><RotateCcw className="size-4" aria-hidden="true" />Reset demo</Button>
-            {membership.role === "SUPER_ADMIN" ? <Link href="/organizations/new" className={buttonVariants()}><Plus className="size-4" aria-hidden="true" />New organization</Link> : <Button><Plus className="size-4" aria-hidden="true" />New sale</Button>}
+            {membership.role === "SUPER_ADMIN" ? <Link href="/organizations/new" className={buttonVariants()}><Plus className="size-4" aria-hidden="true" />New organization</Link> : <Link href="/sales/new" className={buttonVariants()}><Plus className="size-4" aria-hidden="true" />New sale</Link>}
           </div>
+        </div>
+      </section>
+
+      <section className="mt-6" aria-labelledby="quick-actions-title">
+        <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">At a glance</p><h2 id="quick-actions-title" className="mt-1 text-lg font-semibold">Quick actions</h2></div><p className="hidden text-xs text-muted-foreground sm:block">Common tasks, one tap away</p></div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {quickActions.map((item) => <Link key={item.label} href={item.href} className={cn("group flex min-h-24 items-center gap-4 rounded-2xl border p-4 text-left shadow-sm transition-[border-color,background-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2", item.primary ? "border-primary bg-primary text-primary-foreground hover:bg-primary/90" : "border-border bg-card hover:border-primary/40 hover:bg-secondary/35")}>
+            <span className={cn("grid size-11 shrink-0 place-items-center rounded-xl", item.primary ? "bg-primary-foreground/15" : "bg-secondary group-hover:bg-primary/10")}><item.icon className="size-5" aria-hidden="true" /></span>
+            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{item.label}</span><span className={cn("mt-1 block text-xs leading-5", item.primary ? "text-primary-foreground/75" : "text-muted-foreground")}>{item.description}</span></span><ArrowRight className={cn("size-4 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5", item.primary ? "text-primary-foreground/70" : "text-muted-foreground")} aria-hidden="true" />
+          </Link>)}
         </div>
       </section>
 
@@ -96,12 +107,6 @@ export function Dashboard() {
         </aside>
       </div>
 
-      <section className="mt-6" aria-labelledby="quick-actions-title">
-        <h2 id="quick-actions-title" className="text-lg font-semibold">Quick actions</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[{ label: membership.role === "SUPER_ADMIN" ? "Add organization" : "Start a sale", description: membership.role === "SUPER_ADMIN" ? "Set up a new retail business" : "Create an order in under a minute", icon: membership.role === "SUPER_ADMIN" ? Building2 : Plus }, { label: "Find inventory", description: "Search every assigned location", icon: PackageSearch }, { label: "Review transfers", description: "Approve, dispatch or receive", icon: ArrowRightLeft }, { label: "Manage people", description: "Roles, locations and access", icon: Users }].map((item) => <button key={item.label} type="button" className="flex min-h-24 items-start gap-4 rounded-xl border bg-card p-4 text-left hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"><span className="grid size-10 shrink-0 place-items-center rounded-lg bg-secondary"><item.icon className="size-4" aria-hidden="true" /></span><span><span className="block text-sm font-medium">{item.label}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{item.description}</span></span></button>)}
-        </div>
-      </section>
     </div>
   )
 }
