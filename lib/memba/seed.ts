@@ -230,6 +230,7 @@ export const seedData: MembaData = {
   orders: [],
   transfers: [],
   dailyRegisters: [],
+  customers: [],
 }
 
 export const defaultDevelopmentSession: DevelopmentSession = {

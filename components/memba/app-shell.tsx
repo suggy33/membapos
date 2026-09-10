@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useState } from "react"
 import {
   ArrowRightLeft,
@@ -10,6 +10,7 @@ import {
   ChevronDown,
   CircleUserRound,
   ClipboardList,
+  Clock3,
   LayoutDashboard,
   Menu,
   PackageSearch,
@@ -19,6 +20,7 @@ import {
   ShoppingBag,
   Store,
   Users,
+  UserRound,
   X,
 } from "lucide-react"
 
@@ -31,12 +33,14 @@ const navItems = [
   { label: "Organizations", href: "/organizations", icon: Building2, roles: ["SUPER_ADMIN"] },
   { label: "New sale", href: "/sales/new", icon: Plus, roles: ["ADMIN", "STORE_MANAGER", "STORE_USER"] },
   { label: "Orders", href: "/orders", icon: ShoppingBag, roles: ["ADMIN", "STORE_MANAGER", "STORE_USER"] },
+  { label: "Customers", href: "/customers", icon: UserRound, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
   { label: "Products", href: "/products", icon: PackageSearch, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
   { label: "Inventory", href: "/inventory", icon: PackageSearch, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
   { label: "Transfers", href: "/transfers", icon: ArrowRightLeft, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"] },
   { label: "Locations", href: "/organizations", icon: Store, roles: ["SUPER_ADMIN", "ADMIN"] },
   { label: "People", href: "/organizations", icon: Users, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"] },
   { label: "Reports", href: "/reports", icon: ClipboardList, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
+  { label: "Open / close day", href: "/day", icon: Clock3, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
 ] satisfies Array<{ label: string; href: string; icon: typeof LayoutDashboard; roles: Role[] }>
 
 const roleLabels: Record<Role, string> = {
@@ -48,9 +52,12 @@ const roleLabels: Record<Role, string> = {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const router = useRouter()
   const pathname = usePathname()
   const { data, endImpersonation, membership, organization, session, switchMembership, switchOrganization, user } = useMemba()
   const visibleItems = navItems.filter((item) => item.roles.includes(membership.role))
+  function search(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const query = searchQuery.trim().toLowerCase(); if (!query) return; const product = data.products.find((item) => item.name.toLowerCase().includes(query) || item.designNumber.toLowerCase().includes(query)); const variant = data.variants.find((item) => item.sku.toLowerCase().includes(query) || item.barcode.toLowerCase().includes(query)); const order = data.orders.find((item) => item.orderNumber.toLowerCase().includes(query)); const customer = data.customers.find((item) => `${item.firstName} ${item.lastName}`.toLowerCase().includes(query) || item.email.toLowerCase().includes(query) || item.phone.includes(query)); router.push(order ? `/orders/${order.id}` : customer ? "/customers" : product || variant ? "/inventory" : "/inventory"); setSearchQuery("") }
 
   return (
     <div className="min-h-svh bg-background text-foreground">
@@ -77,12 +84,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         >
           <Menu className="size-5" aria-hidden="true" />
         </button>
-        <button type="button" className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg border bg-card px-3 text-left text-sm text-muted-foreground hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring md:max-w-xl">
+        <form onSubmit={search} className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg border bg-card px-3 text-left text-sm text-muted-foreground focus-within:ring-2 focus-within:ring-ring md:max-w-xl">
           <Search className="size-4 shrink-0" aria-hidden="true" />
-          <span className="truncate">Search products, orders, customers…</span>
+          <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground" placeholder="Search products, orders, customers…" aria-label="Search products, orders, customers" />
           <kbd className="ml-auto hidden rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px] sm:inline">⌘ K</kbd>
-        </button>
-        <div className="hidden items-center gap-3 lg:flex">
+        </form>
+        <div className="ml-auto hidden items-center gap-3 lg:flex">
           <div className="text-right">
             <p className="text-sm font-medium leading-4">{user.name}</p>
             <p className="mt-1 text-xs text-muted-foreground">{roleLabels[membership.role]}</p>
