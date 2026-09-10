@@ -47,9 +47,16 @@ export function Dashboard() {
   const scopedOrganizations = organization ? [organization] : data.organizations
   const totalSales = scopedOrganizations.reduce((sum, item) => sum + item.salesTodayCents, 0)
   const totalOrders = scopedOrganizations.reduce((sum, item) => sum + item.orderCountToday, 0)
-  const totalInventory = scopedOrganizations.reduce((sum, item) => sum + item.inventoryCount, 0)
+  const assignedLocationIds = new Set(data.locations.filter((item) => item.organizationId === organization?.id && (membership.role === "STORE_MANAGER" || membership.role === "STORE_USER") ? membership.locationIds.includes(item.id) : true).map((item) => item.id))
+  const totalInventory = organization && (membership.role === "STORE_MANAGER" || membership.role === "STORE_USER") ? data.inventory.filter((item) => assignedLocationIds.has(item.locationId)).reduce((sum, item) => sum + item.quantityOnHand, 0) : scopedOrganizations.reduce((sum, item) => sum + item.inventoryCount, 0)
   const title = membership.role === "SUPER_ADMIN" && !organization ? "Platform overview" : `${organization?.name ?? "Your store"} overview`
-  const quickActions = [{ label: membership.role === "SUPER_ADMIN" ? "Add organization" : "Start a sale", description: membership.role === "SUPER_ADMIN" ? "Set up a new retail business" : "Create an order in under a minute", icon: membership.role === "SUPER_ADMIN" ? Building2 : Plus, href: membership.role === "SUPER_ADMIN" ? "/organizations/new" : "/sales/new", primary: true }, { label: "Open or close day", description: "Open the till and reconcile cash", icon: ReceiptText, href: "/reports" }, { label: "Find inventory", description: "Search every location", icon: PackageSearch, href: "/inventory" }, ...(membership.role === "SUPER_ADMIN" || membership.role === "ADMIN" || membership.role === "STORE_MANAGER" ? [{ label: "Review transfers", description: "Approve, dispatch or receive", icon: ArrowRightLeft, href: "/transfers" }] : []), ...(membership.role === "SUPER_ADMIN" || membership.role === "ADMIN" ? [{ label: "Manage people", description: "Roles, locations and access", icon: Users, href: organization ? `/organizations/${organization.id}/people` : "/organizations" }] : [])]
+  const canManageTransfers = membership.role === "SUPER_ADMIN" || membership.role === "ADMIN" || membership.role === "STORE_MANAGER"
+  const quickActions = [{ label: membership.role === "SUPER_ADMIN" ? "Add organization" : "Start a sale", description: membership.role === "SUPER_ADMIN" ? "Set up a new retail business" : "Create an order in under a minute", icon: membership.role === "SUPER_ADMIN" ? Building2 : Plus, href: membership.role === "SUPER_ADMIN" ? "/organizations/new" : "/sales/new", primary: true }, ...(organization ? [{ label: "Open or close day", description: "Open the storewide trading day", icon: ReceiptText, href: "/day" }] : []), { label: "Find inventory", description: "Search every location", icon: PackageSearch, href: "/inventory" }, ...(canManageTransfers ? [{ label: "Review transfers", description: "Approve, dispatch or receive", icon: ArrowRightLeft, href: "/transfers" }] : []), ...(membership.role === "SUPER_ADMIN" || membership.role === "ADMIN" ? [{ label: "Manage people", description: "Roles, locations and access", icon: Users, href: organization ? `/organizations/${organization.id}/people` : "/organizations" }] : [])]
+  const today = new Date().toISOString().slice(0, 10)
+  const dayOpen = Boolean(organization && data.dailyRegisters.some((item) => item.organizationId === organization.id && item.businessDate === today && item.status === "OPEN"))
+  const dayActionNeeded = Boolean(organization && !dayOpen)
+  const pendingTransfers = canManageTransfers ? data.transfers.filter((item) => (!organization || item.organizationId === organization.id) && ["REQUESTED", "APPROVED", "IN_TRANSIT"].includes(item.status)).length : 0
+  const lowStock = data.inventory.filter((item) => (!organization || item.organizationId === organization.id) && (membership.role === "STORE_MANAGER" || membership.role === "STORE_USER" ? assignedLocationIds.has(item.locationId) : true) && item.quantityOnHand - item.quantityReserved <= 2).length
 
   if (!hydrated) return <DashboardSkeleton />
 
@@ -69,6 +76,8 @@ export function Dashboard() {
         </div>
       </section>
 
+      <section className="mt-6 rounded-xl border bg-card" aria-labelledby="required-actions-title"><div className="flex items-center justify-between border-b px-5 py-4"><div><h2 id="required-actions-title" className="font-semibold">Required actions</h2><p className="mt-1 text-xs text-muted-foreground">Keep today’s operations moving</p></div><span className="rounded-full bg-amber-500/10 px-2.5 py-1 font-mono text-xs font-semibold text-amber-700 dark:text-amber-300">{(dayActionNeeded ? 1 : 0) + pendingTransfers + (lowStock ? 1 : 0)}</span></div><div className="grid gap-3 p-4 sm:grid-cols-3">{dayActionNeeded && <Link href="/day" className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 hover:bg-amber-500/10 focus-visible:ring-2 focus-visible:ring-ring"><p className="text-sm font-semibold">Open the store day</p><p className="mt-1 text-xs text-muted-foreground">Sales are blocked until the day is open.</p></Link>}{pendingTransfers > 0 && <Link href="/transfers" className="rounded-lg border p-4 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"><p className="text-sm font-semibold">Review {pendingTransfers} transfer{pendingTransfers === 1 ? "" : "s"}</p><p className="mt-1 text-xs text-muted-foreground">Approvals, dispatches or receipts are waiting.</p></Link>}{lowStock > 0 && <Link href="/inventory" className="rounded-lg border p-4 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"><p className="text-sm font-semibold">Review low stock</p><p className="mt-1 text-xs text-muted-foreground">{lowStock} inventory record{lowStock === 1 ? "" : "s"} need attention.</p></Link>}{!dayActionNeeded && !pendingTransfers && !lowStock && <div className="col-span-full flex items-center gap-3 rounded-lg bg-emerald-500/5 p-4 text-sm"><span className="grid size-8 place-items-center rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">✓</span>Everything is up to date for today.</div>}</div></section>
+
       <section className="mt-6" aria-labelledby="quick-actions-title">
         <div className="flex items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">At a glance</p><h2 id="quick-actions-title" className="mt-1 text-lg font-semibold">Quick actions</h2></div><p className="hidden text-xs text-muted-foreground sm:block">Common tasks, one tap away</p></div>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -80,10 +89,10 @@ export function Dashboard() {
       </section>
 
       <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Business summary">
-        <MetricCard label="Sales today" value={currency.format(totalSales / 100)} note={`${totalOrders} completed orders`} />
-        <MetricCard label="Orders today" value={String(totalOrders)} note="Across active stores" />
+        <MetricCard label="Sales today" value={currency.format(totalSales / 100)} note={membership.role === "SUPER_ADMIN" ? "Across all organisations" : "Completed sales in scope"} />
+        <MetricCard label="Orders today" value={String(totalOrders)} note={membership.role === "SUPER_ADMIN" ? "Across all organisations" : "Orders in scope"} />
         <MetricCard label="Inventory" value={totalInventory.toLocaleString("en-AU")} note="Available and reserved items" />
-        <MetricCard label={organization ? "Locations" : "Organizations"} value={String(organization ? organization.locationIds.length : data.organizations.length)} note={organization ? "Stores and warehouses" : "1 trial needs attention"} />
+        {membership.role !== "STORE_USER" && <MetricCard label={organization ? "Locations" : "Organizations"} value={String(organization ? organization.locationIds.length : data.organizations.length)} note={organization ? "Stores and warehouses" : "Active organisations"} />}
       </section>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(20rem,0.8fr)]">

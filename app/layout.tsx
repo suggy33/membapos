@@ -1,9 +1,10 @@
+import { ClerkProvider } from "@clerk/nextjs"
 import { Geist, Geist_Mono } from "next/font/google"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { MembaProvider } from "@/components/memba-provider"
-import { cn } from "@/lib/utils";
+import { cn } from "@/lib/utils"
 
 const fontSans = Geist({
   subsets: ["latin"],
@@ -32,13 +33,15 @@ export default function RootLayout({
       className={cn(
         "font-sans antialiased",
         fontSans.variable,
-        fontMono.variable,
+        fontMono.variable
       )}
     >
       <body>
-        <ThemeProvider>
-          <MembaProvider>{children}</MembaProvider>
-        </ThemeProvider>
+        <ClerkProvider>
+          <ThemeProvider>
+            <MembaProvider>{children}</MembaProvider>
+          </ThemeProvider>
+        </ClerkProvider>
       </body>
     </html>
   )

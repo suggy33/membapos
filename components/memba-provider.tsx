@@ -7,7 +7,7 @@ import { defaultDevelopmentSession, seedData } from "@/lib/memba/seed"
 import { adjustInventorySchema, buildRugSku, createProductSchema, createVariantSchema } from "@/lib/memba/catalogue-schemas"
 import { completeSaleSchema } from "@/lib/memba/sales-schemas"
 import { createTransferSchema } from "@/lib/memba/transfer-schemas"
-import type { AdjustInventoryInput, CompleteSaleInput, CreateLocationInput, CreateMemberInput, CreateOrganizationInput, CreateProductInput, CreateTransferInput, CreateVariantInput, DevelopmentSession, MembaData, Membership, Organization, Role, User } from "@/lib/memba/types"
+import type { AdjustInventoryInput, CompleteSaleInput, CreateCustomerInput, CreateLocationInput, CreateMemberInput, CreateOrganizationInput, CreateProductInput, CreateTransferInput, CreateVariantInput, DevelopmentSession, MembaData, Membership, OrderStatus, Organization, Role, UpdateCustomerInput, UpdateProductInput, User } from "@/lib/memba/types"
 
 interface MembaContextValue {
   data: MembaData
@@ -22,15 +22,20 @@ interface MembaContextValue {
   setOrganizationLocationLimit: (organizationId: string, maxLocations: number) => void
   setApprovalCode: (approvalCode: string) => void
   createLocation: (input: CreateLocationInput) => void
+  createCustomer: (input: CreateCustomerInput) => { customerId: string }
+  updateCustomer: (input: UpdateCustomerInput) => void
   setLocationActive: (locationId: string, active: boolean) => void
   createMember: (input: CreateMemberInput) => void
   updateMember: (membershipId: string, role: Exclude<Role, "SUPER_ADMIN">, locationIds: string[]) => void
   setUserActive: (userId: string, active: boolean) => void
   createProduct: (input: CreateProductInput) => { productId: string }
+  updateProduct: (input: UpdateProductInput) => void
+  deleteProduct: (productId: string) => void
   createVariant: (input: CreateVariantInput) => { variantId: string }
   setProductActive: (productId: string, active: boolean) => void
   adjustInventory: (input: AdjustInventoryInput) => void
   completeSale: (input: CompleteSaleInput) => { orderId: string; orderNumber: string }
+  setOrderStatus: (orderId: string, status: OrderStatus) => void
   createTransfer: (input: CreateTransferInput) => { transferId: string }
   approveTransfer: (transferId: string) => void
   dispatchTransfer: (transferId: string) => void
@@ -45,8 +50,12 @@ interface MembaContextValue {
 
 const MembaContext = createContext<MembaContextValue | null>(null)
 function nextOrganizationOrderNumber(data: MembaData, organizationId: string) {
-  const highest = data.orders.filter((item) => item.organizationId === organizationId).reduce((max, item) => Math.max(max, Number(item.orderNumber.replace("MEM-", "")) || 0), 10432)
-  return `MEM-${highest + 1}`
+  const organization = data.organizations.find((item) => item.id === organizationId)
+  const code = organization?.code ?? "MEM"
+  const year = String(new Date().getFullYear()).slice(-2)
+  const prefix = `${code}-${year}-`
+  const highest = data.orders.filter((item) => item.organizationId === organizationId && item.orderNumber.startsWith(prefix)).reduce((max, item) => Math.max(max, Number(item.orderNumber.slice(prefix.length)) || 0), 0)
+  return `${prefix}${String(highest + 1).padStart(6, "0")}`
 }
 
 export function MembaProvider({ children }: { children: React.ReactNode }) {
@@ -144,6 +153,19 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       const id = crypto.randomUUID()
       setData((current) => ({ ...current, locations: [...current.locations, { id, organizationId: input.organizationId, name: input.name.trim(), code, type: input.type, suburb: input.suburb.trim(), state: input.state, active: true }], organizations: current.organizations.map((item) => item.id === input.organizationId ? { ...item, locationIds: [...item.locationIds, id] } : item) }))
     },
+    createCustomer: (input) => {
+      if (!canManageOrganization(input.organizationId) && membership.organizationId !== input.organizationId) throw new Error("You do not have access to add customers for this organization.")
+      if (!input.firstName.trim() || !input.lastName.trim()) throw new Error("Enter the customer’s first and last name.")
+      const customerId = crypto.randomUUID()
+      setData((current) => ({ ...current, customers: [{ id: customerId, organizationId: input.organizationId, firstName: input.firstName.trim(), lastName: input.lastName.trim(), email: input.email.trim().toLowerCase(), phone: input.phone.trim(), address: { unitStreetAddress: input.address.unitStreetAddress.trim(), addressLine2: input.address.addressLine2.trim(), suburb: input.address.suburb.trim(), postCode: input.address.postCode.trim(), state: input.address.state.trim(), country: input.address.country.trim() }, communicationPreferences: input.communicationPreferences, marketingOptIn: input.marketingOptIn, createdAt: new Date().toISOString() }, ...current.customers] }))
+      return { customerId }
+    },
+    updateCustomer: (input) => {
+      const existing = data.customers.find((item) => item.id === input.customerId)
+      if (!existing || (membership.role !== "SUPER_ADMIN" && existing.organizationId !== membership.organizationId)) throw new Error("You do not have access to edit this customer.")
+      if (!input.firstName.trim() || !input.lastName.trim()) throw new Error("Enter the customer’s first and last name.")
+      setData((current) => ({ ...current, customers: current.customers.map((item) => item.id === input.customerId ? { ...item, firstName: input.firstName.trim(), lastName: input.lastName.trim(), email: input.email.trim().toLowerCase(), phone: input.phone.trim(), address: { unitStreetAddress: input.address.unitStreetAddress.trim(), addressLine2: input.address.addressLine2.trim(), suburb: input.address.suburb.trim(), postCode: input.address.postCode.trim(), state: input.address.state.trim(), country: input.address.country.trim() }, communicationPreferences: input.communicationPreferences, marketingOptIn: input.marketingOptIn } : item) }))
+    },
     setLocationActive: (locationId, active) => {
       const target = data.locations.find((item) => item.id === locationId)
       if (!target || !canManageOrganization(target.organizationId)) throw new Error("You do not have permission to update this location.")
@@ -173,11 +195,24 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
     createProduct: (rawInput) => {
       const input = createProductSchema.parse(rawInput)
       if (!canManageOrganization(input.organizationId)) throw new Error("You do not have permission to create products for this organization.")
-      if (data.variants.some((item) => item.organizationId === input.organizationId && item.sku === input.sku)) throw new Error("That SKU is already in use for this organization.")
+      const sku = buildRugSku(input.designNumber, input.colour, input.lengthCm, input.widthCm)
+      if (data.variants.some((item) => item.organizationId === input.organizationId && item.sku === sku)) throw new Error(`That SKU is already in use: ${sku}.`)
       if (!data.locations.some((item) => item.id === input.initialLocationId && item.organizationId === input.organizationId && item.active)) throw new Error("Select an active location in this organization.")
       const productId = crypto.randomUUID(); const variantId = crypto.randomUUID(); const inventoryId = crypto.randomUUID()
-      setData((current) => ({ ...current, products: [...current.products, { id: productId, organizationId: input.organizationId, name: input.name, designNumber: input.designNumber, category: input.category, collection: input.collection, material: input.material, active: true, variantIds: [variantId] }], variants: [...current.variants, { id: variantId, organizationId: input.organizationId, productId, sku: input.sku, barcode: input.barcode, articleNumber: input.articleNumber, colour: input.colour, widthCm: input.widthCm, lengthCm: input.lengthCm, retailPriceCents: input.retailPriceCents, costPriceCents: input.costPriceCents, gstApplicable: input.gstApplicable, active: true }], inventory: [...current.inventory, { id: inventoryId, organizationId: input.organizationId, variantId, locationId: input.initialLocationId, quantityOnHand: input.initialStock, quantityReserved: 0 }], inventoryMovements: input.initialStock ? [{ id: crypto.randomUUID(), organizationId: input.organizationId, variantId, locationId: input.initialLocationId, type: "INITIAL_STOCK", quantityChange: input.initialStock, quantityBefore: 0, quantityAfter: input.initialStock, reason: "Initial stock", notes: "Stock recorded during product creation", createdByUserId: user.id, createdAt: new Date().toISOString() }, ...current.inventoryMovements] : current.inventoryMovements }))
+      setData((current) => ({ ...current, products: [...current.products, { id: productId, organizationId: input.organizationId, name: input.name, designNumber: input.designNumber, category: input.category, collection: input.collection, material: input.material, active: true, variantIds: [variantId] }], variants: [...current.variants, { id: variantId, organizationId: input.organizationId, productId, sku, barcode: input.barcode, articleNumber: input.articleNumber, colour: input.colour, widthCm: input.widthCm, lengthCm: input.lengthCm, retailPriceCents: input.retailPriceCents, costPriceCents: input.costPriceCents, gstApplicable: input.gstApplicable, active: true }], inventory: [...current.inventory, { id: inventoryId, organizationId: input.organizationId, variantId, locationId: input.initialLocationId, quantityOnHand: input.initialStock, quantityReserved: 0 }], inventoryMovements: input.initialStock ? [{ id: crypto.randomUUID(), organizationId: input.organizationId, variantId, locationId: input.initialLocationId, type: "INITIAL_STOCK", quantityChange: input.initialStock, quantityBefore: 0, quantityAfter: input.initialStock, reason: "Initial stock", notes: "Stock recorded during product creation", createdByUserId: user.id, createdAt: new Date().toISOString() }, ...current.inventoryMovements] : current.inventoryMovements }))
       return { productId }
+    },
+    updateProduct: (input: UpdateProductInput) => {
+      const product = data.products.find((item) => item.id === input.productId)
+      if (!product || !canManageOrganization(product.organizationId)) throw new Error("You do not have permission to edit this product.")
+      if (!input.name.trim() || !input.designNumber.trim() || !input.category.trim() || !input.collection.trim() || !input.material.trim()) throw new Error("Complete all product fields.")
+      setData((current) => ({ ...current, products: current.products.map((item) => item.id === input.productId ? { ...item, name: input.name.trim(), designNumber: input.designNumber.trim().toUpperCase(), category: input.category.trim(), collection: input.collection.trim(), material: input.material.trim() } : item) }))
+    },
+    deleteProduct: (productId: string) => {
+      const product = data.products.find((item) => item.id === productId)
+      if (!product || (membership.role !== "SUPER_ADMIN" && product.organizationId !== membership.organizationId) || !canManageOrganization(product.organizationId)) throw new Error("You do not have permission to remove this product.")
+      const variantIds = new Set(data.variants.filter((item) => item.productId === productId).map((item) => item.id))
+      setData((current) => ({ ...current, products: current.products.filter((item) => item.id !== productId), variants: current.variants.filter((item) => item.productId !== productId), inventory: current.inventory.filter((item) => !variantIds.has(item.variantId)) }))
     },
     createVariant: (rawInput) => {
       const input = createVariantSchema.parse(rawInput)
@@ -211,6 +246,8 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       if (input.organizationId !== (membership.role === "SUPER_ADMIN" ? input.organizationId : membership.organizationId)) throw new Error("You do not have access to this organization.")
       if (membership.role === "STORE_MANAGER" && !membership.locationIds.includes(input.locationId)) throw new Error("You can sell only from your assigned locations.")
       if (membership.role === "STORE_USER" && !membership.locationIds.includes(input.locationId)) throw new Error("You can sell only from your assigned location.")
+      const businessDate = new Date().toISOString().slice(0, 10)
+      if (!data.dailyRegisters.some((item) => item.organizationId === input.organizationId && item.businessDate === businessDate && item.status === "OPEN")) throw new Error("Open the store day before starting a sale.")
       const hasDiscount = input.items.some((item) => item.discountCents > 0)
       const isPrivilegedBilling = membership.role === "STORE_MANAGER" || membership.role === "ADMIN" || membership.role === "SUPER_ADMIN"
       let approvalUserId: string | undefined
@@ -238,9 +275,19 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       const gstTotalCents = calculatedItems.reduce((sum, item) => sum + (item.variant.gstApplicable ? Math.round(item.lineTotalCents / 11) : 0), 0)
       if (input.amountPaidCents !== totalCents) throw new Error(`Payment must match the sale total of $${(totalCents / 100).toFixed(2)}.`)
       const orderId = crypto.randomUUID(); const orderNumber = nextOrganizationOrderNumber(data, input.organizationId); const now = new Date().toISOString()
-      const order = { id: orderId, organizationId: input.organizationId, orderNumber, locationId: input.locationId, salespersonUserId: user.id, approvalUserId, status: "COMPLETED" as const, items: calculatedItems.map((item) => ({ id: crypto.randomUUID(), variantId: item.variant.id, skuSnapshot: item.variant.sku, descriptionSnapshot: item.description, qty: item.input.qty, unitPriceCents: item.variant.retailPriceCents, discountCents: item.input.discountCents, lineTotalCents: item.lineTotalCents })), subtotalCents, discountTotalCents, gstTotalCents, totalCents, amountPaidCents: input.amountPaidCents, paymentMethod: input.paymentMethod, createdAt: now, completedAt: now }
+      if (input.customerId && !data.customers.some((item) => item.id === input.customerId && item.organizationId === input.organizationId)) throw new Error("Select a customer from this organization.")
+      const deliveryRequested = input.items.some((item) => item.fulfillmentType === "DELIVERY")
+      const customer = input.customerId ? data.customers.find((item) => item.id === input.customerId) : undefined
+      if (deliveryRequested && (!customer || !customer.address.unitStreetAddress || !customer.address.suburb || !customer.address.postCode || !customer.address.state || !customer.address.country)) throw new Error("Delivery requires a customer with a complete delivery address.")
+      const order = { id: orderId, organizationId: input.organizationId, orderNumber, locationId: input.locationId, salespersonUserId: user.id, customerId: input.customerId, approvalUserId, status: "COMPLETED" as const, items: calculatedItems.map((item) => ({ id: crypto.randomUUID(), variantId: item.variant.id, skuSnapshot: item.variant.sku, descriptionSnapshot: item.description, qty: item.input.qty, unitPriceCents: item.variant.retailPriceCents, discountCents: item.input.discountCents, lineTotalCents: item.lineTotalCents, fulfillmentType: item.input.fulfillmentType })), subtotalCents, discountTotalCents, gstTotalCents, totalCents, amountPaidCents: input.amountPaidCents, paymentMethod: input.paymentMethod, createdAt: now, completedAt: now }
       setData((current) => ({ ...current, orders: [order, ...current.orders], organizations: current.organizations.map((item) => item.id === input.organizationId ? { ...item, salesTodayCents: item.salesTodayCents + totalCents, orderCountToday: item.orderCountToday + 1, inventoryCount: item.inventoryCount - input.items.reduce((sum, line) => sum + line.qty, 0) } : item), inventory: current.inventory.map((record) => { const sold = calculatedItems.find((item) => item.inventory?.id === record.id); return sold ? { ...record, quantityOnHand: record.quantityOnHand - sold.input.qty } : record }), inventoryMovements: [...calculatedItems.map((item) => ({ id: crypto.randomUUID(), organizationId: input.organizationId, variantId: item.variant.id, locationId: input.locationId, type: "SALE" as const, quantityChange: -item.input.qty, quantityBefore: item.inventory?.quantityOnHand ?? 0, quantityAfter: (item.inventory?.quantityOnHand ?? 0) - item.input.qty, reason: orderNumber, notes: `Sale completed via POS · ${input.paymentMethod}`, createdByUserId: user.id, createdAt: now })), ...current.inventoryMovements], activity: [{ id: crypto.randomUUID(), organizationId: input.organizationId, title: `Sale ${orderNumber} completed`, description: `$${(totalCents / 100).toFixed(2)} · ${input.paymentMethod}`, timestamp: "Just now", kind: "SALE" }, ...current.activity] }))
       return { orderId, orderNumber }
+    },
+    setOrderStatus: (orderId, status) => {
+      const target = data.orders.find((item) => item.id === orderId)
+      if (!target || target.organizationId !== membership.organizationId && membership.role !== "SUPER_ADMIN") throw new Error("You do not have access to this order.")
+      if (session.impersonationActorUserId || !["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"].includes(membership.role)) throw new Error("Only managers and above can change order status.")
+      setData((current) => ({ ...current, orders: current.orders.map((item) => item.id === orderId ? { ...item, status } : item) }))
     },
     createTransfer: (rawInput) => {
       const input = createTransferSchema.parse(rawInput)
@@ -285,7 +332,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
     openDay: (organizationId, locationId) => {
       if (session.impersonationActorUserId || !membership.locationIds.includes(locationId) && membership.role !== "SUPER_ADMIN" && membership.role !== "ADMIN") throw new Error("You do not have access to open this location.")
       const businessDate = new Date().toISOString().slice(0, 10)
-      if (data.dailyRegisters.some((item) => item.organizationId === organizationId && item.locationId === locationId && item.businessDate === businessDate && item.status === "OPEN")) throw new Error("This day is already open at this location.")
+      if (data.dailyRegisters.some((item) => item.organizationId === organizationId && item.businessDate === businessDate && item.status === "OPEN")) throw new Error("This organization’s day is already open.")
       setData((current) => ({ ...current, dailyRegisters: [{ id: crypto.randomUUID(), organizationId, locationId, businessDate, status: "OPEN", openedByUserId: user.id, openedAt: new Date().toISOString() }, ...current.dailyRegisters] }))
     },
     endDay: (registerId, countedCashCents, notes) => {
@@ -293,7 +340,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       if (!register || register.status !== "OPEN") throw new Error("This day is not open.")
       if (session.impersonationActorUserId || (membership.role !== "SUPER_ADMIN" && membership.role !== "ADMIN" && !membership.locationIds.includes(register.locationId))) throw new Error("You do not have access to end this day.")
       if (!Number.isInteger(countedCashCents) || countedCashCents < 0) throw new Error("Enter the counted cash amount.")
-      const expectedCashCents = data.orders.filter((order) => order.organizationId === register.organizationId && order.locationId === register.locationId && order.paymentMethod === "CASH" && order.createdAt.slice(0, 10) === register.businessDate).reduce((sum, order) => sum + order.totalCents, 0)
+      const expectedCashCents = data.orders.filter((order) => order.organizationId === register.organizationId && order.paymentMethod === "CASH" && order.createdAt.slice(0, 10) === register.businessDate).reduce((sum, order) => sum + order.totalCents, 0)
       setData((current) => ({ ...current, dailyRegisters: current.dailyRegisters.map((item) => item.id === registerId ? { ...item, status: "CLOSED" as const, closedByUserId: user.id, closedAt: new Date().toISOString(), expectedCashCents, countedCashCents, varianceCents: countedCashCents - expectedCashCents, notes } : item) }))
     },
     startImpersonation: (membershipId, reason) => {
