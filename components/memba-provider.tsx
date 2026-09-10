@@ -1,5 +1,6 @@
 "use client"
 
+import { useAuth } from "@clerk/nextjs"
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 
 import { loadDevelopmentSession, loadLocalData, resetLocalDevelopmentData, saveDevelopmentSession, saveLocalData } from "@/lib/memba/local-store"
@@ -7,7 +8,7 @@ import { defaultDevelopmentSession, seedData } from "@/lib/memba/seed"
 import { adjustInventorySchema, buildRugSku, createProductSchema, createVariantSchema } from "@/lib/memba/catalogue-schemas"
 import { completeSaleSchema } from "@/lib/memba/sales-schemas"
 import { createTransferSchema } from "@/lib/memba/transfer-schemas"
-import type { AdjustInventoryInput, CompleteSaleInput, CreateCustomerInput, CreateLocationInput, CreateMemberInput, CreateOrganizationInput, CreateProductInput, CreateTransferInput, CreateVariantInput, DevelopmentSession, MembaData, Membership, OrderStatus, Organization, Role, UpdateCustomerInput, UpdateProductInput, User } from "@/lib/memba/types"
+import type { AdjustInventoryInput, CompleteSaleInput, CreateCustomerInput, CreateLocationInput, CreateMemberInput, CreateOrganizationInput, CreateProductInput, CreateTransferInput, CreateVariantInput, DevelopmentSession, MembaData, Membership, OrderStatus, Organization, OrganizationStatus, Role, UpdateCustomerInput, UpdateProductInput, User } from "@/lib/memba/types"
 
 interface MembaContextValue {
   data: MembaData
@@ -49,6 +50,133 @@ interface MembaContextValue {
 }
 
 const MembaContext = createContext<MembaContextValue | null>(null)
+
+type ProductionOrganisation = {
+  id: string
+  name: string
+  code: string
+  status: "TRIAL" | "ACTIVE" | "SUSPENDED" | "ARCHIVED"
+  max_locations: number
+}
+
+type ProductionLocation = {
+  id: string
+  organisation_id: string
+  name: string
+  code: string
+  type: "STORE" | "WAREHOUSE"
+  address: { suburb?: string; state?: string }
+  active: boolean
+}
+
+type ProductionEmployee = {
+  id: string
+  clerk_user_id: string
+  email: string
+  display_name: string
+  status: "INVITED" | "ACTIVE" | "INACTIVE"
+}
+
+type ProductionMembership = {
+  id: string
+  organisation_id: string | null
+  employee_id: string
+  role: Role
+  location_ids: string[]
+  active: boolean
+  employees: ProductionEmployee | ProductionEmployee[] | null
+}
+
+type ProductionBootstrap = {
+  organisations: ProductionOrganisation[]
+  locations: ProductionLocation[]
+  memberships: ProductionMembership[]
+}
+
+function isHostedProduction() {
+  if (typeof window === "undefined") return false
+  return !["localhost", "127.0.0.1"].includes(window.location.hostname)
+}
+
+function productionData(data: ProductionBootstrap, currentClerkUserId: string): { data: MembaData; membershipId: string; userId: string } | null {
+  const employeeMap = new Map<string, ProductionEmployee>()
+  for (const membership of data.memberships) {
+    const employee = Array.isArray(membership.employees) ? membership.employees[0] : membership.employees
+    if (employee) employeeMap.set(employee.id, employee)
+  }
+
+  const currentMembership = data.memberships.find((membership) => {
+    const employee = Array.isArray(membership.employees) ? membership.employees[0] : membership.employees
+    return membership.active && employee?.status === "ACTIVE" && employee.clerk_user_id === currentClerkUserId
+  })
+  if (!currentMembership) return null
+
+  const locations = data.locations.map((location) => ({
+    id: location.id,
+    organizationId: location.organisation_id,
+    name: location.name,
+    code: location.code,
+    type: location.type,
+    suburb: location.address?.suburb ?? "",
+    state: location.address?.state ?? "",
+    active: location.active,
+  }))
+
+  const memberships = data.memberships.map((membership) => ({
+    id: membership.id,
+    userId: membership.employee_id,
+    organizationId: membership.organisation_id,
+    role: membership.role,
+    locationIds: membership.location_ids,
+  }))
+
+  const organizations = data.organisations.map((organisation) => {
+    const status: OrganizationStatus = organisation.status === "TRIAL" ? "TRIAL" : organisation.status === "ACTIVE" ? "ACTIVE" : "INACTIVE"
+    return {
+      id: organisation.id,
+      name: organisation.name,
+      code: organisation.code,
+      status,
+      locationIds: locations.filter((location) => location.organizationId === organisation.id).map((location) => location.id),
+      memberIds: memberships.filter((membership) => membership.organizationId === organisation.id).map((membership) => membership.userId),
+      salesTodayCents: 0,
+      orderCountToday: 0,
+      inventoryCount: 0,
+      maxLocations: organisation.max_locations,
+    }
+  })
+
+  const users = [...employeeMap.values()].map((employee) => ({
+    id: employee.id,
+    name: employee.display_name || employee.email,
+    email: employee.email,
+    initials: employee.display_name.split(/\\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase(),
+    active: employee.status === "ACTIVE",
+  }))
+
+  return {
+    data: {
+      schemaVersion: 1,
+      organizations,
+      locations,
+      users,
+      memberships,
+      activity: [],
+      auditLogs: [],
+      products: [],
+      variants: [],
+      inventory: [],
+      inventoryMovements: [],
+      orders: [],
+      transfers: [],
+      dailyRegisters: [],
+      customers: [],
+    },
+    membershipId: currentMembership.id,
+    userId: currentMembership.employee_id,
+  }
+}
+
 function nextOrganizationOrderNumber(data: MembaData, organizationId: string) {
   const organization = data.organizations.find((item) => item.id === organizationId)
   const code = organization?.code ?? "MEM"
@@ -59,26 +187,61 @@ function nextOrganizationOrderNumber(data: MembaData, organizationId: string) {
 }
 
 export function MembaProvider({ children }: { children: React.ReactNode }) {
+  const { isLoaded: clerkLoaded, isSignedIn, userId: clerkUserId } = useAuth()
   const [data, setData] = useState<MembaData>(seedData)
   const [session, setSession] = useState<DevelopmentSession>(defaultDevelopmentSession)
   const [hydrated, setHydrated] = useState(false)
+  const [productionUnavailable, setProductionUnavailable] = useState(false)
 
   useEffect(() => {
-    const hydrationTask = window.setTimeout(() => {
-      setData(loadLocalData())
-      setSession(loadDevelopmentSession())
-      setHydrated(true)
-    }, 0)
+    if (!clerkLoaded) return
 
-    return () => window.clearTimeout(hydrationTask)
-  }, [])
+    let cancelled = false
+    const hydrate = async () => {
+      if (isHostedProduction() && isSignedIn) {
+        try {
+          const response = await fetch("/api/organisations", { cache: "no-store" })
+          if (response.ok) {
+            const bootstrap = clerkUserId ? productionData((await response.json()) as ProductionBootstrap, clerkUserId) : null
+            if (!cancelled && bootstrap) {
+              setProductionUnavailable(false)
+              setData(bootstrap.data)
+              setSession({ userId: bootstrap.userId, membershipId: bootstrap.membershipId, organizationId: null })
+              setHydrated(true)
+              return
+            }
+          }
+        } catch {
+          // The hosted app must not fall back to demo data.
+        }
+
+        if (!cancelled) {
+          setProductionUnavailable(true)
+          setHydrated(true)
+          return
+        }
+      }
+
+      if (!cancelled) {
+        setData(loadLocalData())
+        setSession(loadDevelopmentSession())
+        setHydrated(true)
+      }
+    }
+
+    void hydrate()
+
+    return () => {
+      cancelled = true
+    }
+  }, [clerkLoaded, clerkUserId, isSignedIn])
 
   useEffect(() => {
-    if (hydrated) saveLocalData(data)
+    if (hydrated && !isHostedProduction()) saveLocalData(data)
   }, [data, hydrated])
 
   useEffect(() => {
-    if (hydrated) saveDevelopmentSession(session)
+    if (hydrated && !isHostedProduction()) saveDevelopmentSession(session)
   }, [session, hydrated])
 
   const membership = data.memberships.find((item) => item.id === session.membershipId) ?? data.memberships[0]
@@ -364,6 +527,14 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       setSession(defaultDevelopmentSession)
     },
   }), [canManageOrganization, data, hydrated, membership, organization, session, user])
+
+  if (!hydrated) {
+    return <main className="grid min-h-svh place-items-center bg-background p-6 text-sm text-muted-foreground">Loading workspace…</main>
+  }
+
+  if (productionUnavailable) {
+    return <main className="grid min-h-svh place-items-center bg-background p-6 text-center"><div><h1 className="text-lg font-semibold">Workspace unavailable</h1><p className="mt-2 max-w-md text-sm text-muted-foreground">Memba could not load the production workspace. Refresh the page or contact an administrator.</p></div></main>
+  }
 
   return <MembaContext.Provider value={value}>{children}</MembaContext.Provider>
 }
