@@ -37,7 +37,7 @@ export default function RootLayout({
       )}
     >
       <body>
-        <ClerkProvider>
+        <ClerkProvider dynamic>
           <ThemeProvider>
             <MembaProvider>{children}</MembaProvider>
           </ThemeProvider>
