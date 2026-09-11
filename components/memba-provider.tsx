@@ -206,6 +206,11 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
 
     let cancelled = false
     const hydrate = async () => {
+      if (!cancelled) {
+        setHydrated(false)
+        setProductionUnavailable(false)
+      }
+
       if (isHostedProduction() && isSignedIn && !isPublicRoute(pathname)) {
         try {
           const response = await fetch("/api/organisations", { cache: "no-store" })
