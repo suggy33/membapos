@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 type BusinessRole = Exclude<Role, "SUPER_ADMIN">
 
 export function PeopleManagement({ organizationId }: { organizationId: string }) {
-  const { createMember, data, membership, setUserActive, updateMember } = useMemba()
+  const { data, membership, setUserActive, updateMember } = useMemba()
   const organization = data.organizations.find((item) => item.id === organizationId)
   const locations = data.locations.filter((item) => item.organizationId === organizationId && item.active)
   const memberships = data.memberships.filter((item) => item.organizationId === organizationId)
@@ -22,14 +22,14 @@ export function PeopleManagement({ organizationId }: { organizationId: string })
 
   if (!organization || !canView) return <div className="mx-auto max-w-xl px-4 py-20 text-center"><Users className="mx-auto size-10 text-muted-foreground" aria-hidden="true" /><h1 className="mt-5 text-2xl font-semibold">People access unavailable</h1><p className="mt-2 text-sm text-muted-foreground">The organization does not exist or your current role cannot view it.</p></div>
 
-  function invite(event: React.FormEvent<HTMLFormElement>) {
+  async function invite(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(null); setSuccess(null)
     const form = event.currentTarget; const values = new FormData(form)
     const locationIds = values.getAll("locationIds").map(String)
     const input: CreateMemberInput = { organizationId, name: String(values.get("name") ?? ""), email: String(values.get("email") ?? ""), role: String(values.get("role")) as BusinessRole, locationIds }
     if (input.name.trim().split(/\s+/).length < 2) { setError("Enter the user’s full name."); return }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim())) { setError("Enter a valid email address."); return }
-    try { createMember(input); form.reset(); setSuccess(`${input.name.trim()} was added. Clerk invitation delivery will be connected later.`) } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not add this user.") }
+    try { const response = await fetch(`/api/admin/organisations/${organizationId}/members`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }); const result = await response.json().catch(() => null) as { error?: string } | null; if (!response.ok) throw new Error(result?.error ?? "Could not create the invitation."); form.reset(); setSuccess(`Invitation sent to ${input.email.trim().toLowerCase()}.`); window.location.reload() } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not add this user.") }
   }
 
   return <div className="mx-auto max-w-[1440px] px-4 py-6 md:px-6 lg:px-8 lg:py-8"><div><p className="text-sm font-medium text-primary">{organization.name}</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">People and access</h1><p className="mt-2 text-sm text-muted-foreground">Assign roles and locations. Users may belong to multiple organizations.</p></div>

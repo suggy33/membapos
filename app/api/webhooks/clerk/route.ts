@@ -20,6 +20,16 @@ async function syncUser(data: { id: string; email_addresses: Array<{ email_addre
   const firstName = data.first_name ?? ""
   const lastName = data.last_name ?? ""
   const email = data.email_addresses[0]?.email_address ?? ""
+  const matchingEmployees = await supabaseRestRequest<Array<{ id: string }>>(`employees?select=id&email=eq.${encodeURIComponent(email)}&limit=1`, { serviceRole: true })
+  if (matchingEmployees[0]) {
+    await supabaseRestRequest(`employees?id=eq.${matchingEmployees[0].id}`, {
+      method: "PATCH",
+      serviceRole: true,
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ clerk_user_id: data.id, email, first_name: firstName, last_name: lastName, display_name: displayName(firstName, lastName) || email, status: "ACTIVE" }),
+    })
+    return
+  }
   await supabaseRestRequest("employees?on_conflict=clerk_user_id", {
     method: "POST",
     serviceRole: true,
