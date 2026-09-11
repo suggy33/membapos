@@ -37,7 +37,8 @@ export async function supabaseRestRequest<T>(path: string, options: SupabaseRequ
   })
 
   if (!response.ok) {
-    throw new Error(`Supabase request failed with status ${response.status}.`)
+    const responseBody = (await response.text()).replace(/\s+/g, " ").slice(0, 300)
+    throw new Error(`Supabase request failed with status ${response.status}${responseBody ? `: ${responseBody}` : "."}`)
   }
 
   if (response.status === 204) return null as T
