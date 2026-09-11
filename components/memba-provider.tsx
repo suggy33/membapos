@@ -224,6 +224,8 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
             setProductionUnavailableReason(failure?.code === "NO_MEMBERSHIP"
               ? "Your Clerk account is signed in but has not been assigned to a Memba organisation. Ask a Super Admin to activate your membership."
               : "Your Clerk account is not active in Memba. Ask a Super Admin to check the employee record.")
+          } else {
+            setProductionUnavailableReason("The production workspace API could not be reached. Check the Vercel deployment logs and production environment variables.")
           }
         } catch {
           // The hosted app must not fall back to demo data.

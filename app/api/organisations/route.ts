@@ -29,27 +29,33 @@ export async function GET() {
   if (!userId) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
   try {
-    const clerkUser = await currentUser()
-    if (!clerkUser) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
+    const clerkUser = await currentUser().catch(() => null)
 
-    await supabaseRestRequest("employees?on_conflict=clerk_user_id", {
-      method: "POST",
-      serviceRole: true,
-      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify({
-        clerk_user_id: userId,
-        email: clerkUser.primaryEmailAddress?.emailAddress ?? "",
-        first_name: clerkUser.firstName ?? "",
-        last_name: clerkUser.lastName ?? "",
-        display_name: clerkUser.fullName ?? clerkUser.primaryEmailAddress?.emailAddress ?? userId,
-        status: "ACTIVE",
-      }),
-    })
-
-    const employees = await supabaseRestRequest<Employee[]>(
+    let employees = await supabaseRestRequest<Employee[]>(
       `employees?select=id,clerk_user_id,email,display_name,status&clerk_user_id=eq.${encodeURIComponent(userId)}&limit=1`,
       { serviceRole: true },
     )
+
+    if (!employees[0] && clerkUser) {
+      await supabaseRestRequest("employees?on_conflict=clerk_user_id", {
+        method: "POST",
+        serviceRole: true,
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify({
+          clerk_user_id: userId,
+          email: clerkUser.primaryEmailAddress?.emailAddress ?? "",
+          first_name: clerkUser.firstName ?? "",
+          last_name: clerkUser.lastName ?? "",
+          display_name: clerkUser.fullName ?? clerkUser.primaryEmailAddress?.emailAddress ?? userId,
+          status: "ACTIVE",
+        }),
+      })
+      employees = await supabaseRestRequest<Employee[]>(
+        `employees?select=id,clerk_user_id,email,display_name,status&clerk_user_id=eq.${encodeURIComponent(userId)}&limit=1`,
+        { serviceRole: true },
+      )
+    }
+
     const employee = employees[0]
     if (!employee || employee.status !== "ACTIVE") return NextResponse.json({ error: "No active Memba employee record.", code: "NO_ACTIVE_EMPLOYEE" }, { status: 403 })
 
