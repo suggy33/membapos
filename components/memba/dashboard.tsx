@@ -1,6 +1,6 @@
 "use client"
 
-import { ArrowRight, ArrowRightLeft, Building2, PackageSearch, Plus, ReceiptText, RotateCcw, Store, Users } from "lucide-react"
+import { ArrowRight, ArrowRightLeft, Building2, PackageSearch, Plus, ReceiptText, Store, Users } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { useMemba } from "@/components/memba-provider"
@@ -43,7 +43,7 @@ function OrganizationRow({ organization }: { organization: Organization }) {
 }
 
 export function Dashboard() {
-  const { data, hydrated, membership, organization, resetDemo, user } = useMemba()
+  const { data, hydrated, membership, organization, user } = useMemba()
   const scopedOrganizations = organization ? [organization] : data.organizations
   const totalSales = scopedOrganizations.reduce((sum, item) => sum + item.salesTodayCents, 0)
   const totalOrders = scopedOrganizations.reduce((sum, item) => sum + item.orderCountToday, 0)
@@ -70,7 +70,6 @@ export function Dashboard() {
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">See what is moving across the business and act on what needs attention.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={resetDemo}><RotateCcw className="size-4" aria-hidden="true" />Reset demo</Button>
             {membership.role === "SUPER_ADMIN" ? <Link href="/organizations/new" className={buttonVariants()}><Plus className="size-4" aria-hidden="true" />New organization</Link> : <Link href="/sales/new" className={buttonVariants()}><Plus className="size-4" aria-hidden="true" />New sale</Link>}
           </div>
         </div>

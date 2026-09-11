@@ -1,12 +1,12 @@
 "use client"
 
 import { useAuth } from "@clerk/nextjs"
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
 
 import { loadDevelopmentSession, loadLocalData, resetLocalDevelopmentData, saveDevelopmentSession, saveLocalData } from "@/lib/memba/local-store"
-import { defaultDevelopmentSession, seedData } from "@/lib/memba/seed"
+import { emptyData, emptyDevelopmentSession, emptyMembership, emptyUser } from "@/lib/memba/empty-data"
 import { adjustInventorySchema, buildRugSku, createProductSchema, createVariantSchema } from "@/lib/memba/catalogue-schemas"
 import { completeSaleSchema } from "@/lib/memba/sales-schemas"
 import { createTransferSchema } from "@/lib/memba/transfer-schemas"
@@ -195,8 +195,9 @@ function nextOrganizationOrderNumber(data: MembaData, organizationId: string) {
 export function MembaProvider({ children }: { children: React.ReactNode }) {
   const { isLoaded: clerkLoaded, isSignedIn, userId: clerkUserId } = useAuth()
   const pathname = usePathname()
-  const [data, setData] = useState<MembaData>(seedData)
-  const [session, setSession] = useState<DevelopmentSession>(defaultDevelopmentSession)
+  const [data, setData] = useState<MembaData>(emptyData)
+  const [session, setSession] = useState<DevelopmentSession>(emptyDevelopmentSession)
+  const productionBootstrapRef = useRef<{ clerkUserId: string; data: MembaData; session: DevelopmentSession } | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [productionUnavailable, setProductionUnavailable] = useState(false)
   const [productionUnavailableReason, setProductionUnavailableReason] = useState("Memba could not load the production workspace. Refresh the page or contact an administrator.")
@@ -212,6 +213,13 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (isHostedProduction() && isSignedIn && !isPublicRoute(pathname)) {
+        const cached = clerkUserId && productionBootstrapRef.current?.clerkUserId === clerkUserId ? productionBootstrapRef.current : null
+        if (cached) {
+          setData(cached.data)
+          setSession(cached.session)
+          setHydrated(true)
+          return
+        }
         try {
           const response = await fetch("/api/organisations", { cache: "no-store" })
           if (response.ok) {
@@ -220,7 +228,9 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
               setProductionUnavailable(false)
               setProductionUnavailableReason("")
               setData(bootstrap.data)
-              setSession({ userId: bootstrap.userId, membershipId: bootstrap.membershipId, organizationId: null })
+              const productionSession = { userId: bootstrap.userId, membershipId: bootstrap.membershipId, organizationId: null }
+              setSession(productionSession)
+              productionBootstrapRef.current = { clerkUserId, data: bootstrap.data, session: productionSession }
               setHydrated(true)
               return
             }
@@ -244,6 +254,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!cancelled) {
+        if (!isSignedIn) productionBootstrapRef.current = null
         setProductionUnavailable(false)
         setProductionUnavailableReason("")
         setData(loadLocalData())
@@ -267,8 +278,8 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
     if (hydrated && !isHostedProduction()) saveDevelopmentSession(session)
   }, [session, hydrated])
 
-  const membership = data.memberships.find((item) => item.id === session.membershipId) ?? data.memberships[0]
-  const user = data.users.find((item) => item.id === membership.userId) ?? data.users[0]
+  const membership = data.memberships.find((item) => item.id === session.membershipId) ?? data.memberships[0] ?? emptyMembership
+  const user = data.users.find((item) => item.id === membership.userId) ?? data.users[0] ?? emptyUser
   const organizationId = membership.role === "SUPER_ADMIN" ? session.organizationId : membership.organizationId
   const organization = data.organizations.find((item) => item.id === organizationId) ?? null
 
@@ -546,8 +557,8 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
     },
     resetDemo: () => {
       resetLocalDevelopmentData()
-      setData(structuredClone(seedData))
-      setSession(defaultDevelopmentSession)
+      setData(structuredClone(emptyData))
+      setSession(emptyDevelopmentSession)
     },
   }), [canManageOrganization, data, hydrated, membership, organization, session, user])
 
