@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import { MembaProvider } from "@/components/memba-provider"
+import { WorkspaceFrame } from "@/components/memba/workspace-frame"
 import { cn } from "@/lib/utils"
 
 const fontSans = Geist({
@@ -39,7 +40,7 @@ export default function RootLayout({
       <body>
         <ClerkProvider dynamic>
           <ThemeProvider>
-            <MembaProvider>{children}</MembaProvider>
+            <MembaProvider><WorkspaceFrame>{children}</WorkspaceFrame></MembaProvider>
           </ThemeProvider>
         </ClerkProvider>
       </body>
