@@ -7,15 +7,19 @@ type SupabaseRequestOptions = RequestInit & {
 }
 
 function getSupabaseConfig(serviceRole: boolean) {
-  const url = process.env.SUPABASE_PROJECT_URL ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const configuredUrl = process.env.SUPABASE_PROJECT_URL
+    ?? process.env.SUPABASE_URL
+    ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+    ?? process.env.SUPABASE_PROJECT_ID
   const key = serviceRole
     ? process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY
     : process.env.SUPABASE_PUBLIC_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  if (!url || !key) {
+  if (!configuredUrl || !key) {
     throw new Error("Supabase server configuration is incomplete.")
   }
 
+  const url = configuredUrl.startsWith("http") ? configuredUrl : `https://${configuredUrl}.supabase.co`
   return { url: url.replace(/\/$/, ""), key }
 }
 
