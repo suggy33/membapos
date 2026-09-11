@@ -2,6 +2,8 @@
 
 import { useAuth } from "@clerk/nextjs"
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
+import { usePathname } from "next/navigation"
+import Link from "next/link"
 
 import { loadDevelopmentSession, loadLocalData, resetLocalDevelopmentData, saveDevelopmentSession, saveLocalData } from "@/lib/memba/local-store"
 import { defaultDevelopmentSession, seedData } from "@/lib/memba/seed"
@@ -98,6 +100,10 @@ function isHostedProduction() {
   return !["localhost", "127.0.0.1"].includes(window.location.hostname)
 }
 
+function isPublicRoute(pathname: string) {
+  return pathname === "/" || pathname === "/login" || pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")
+}
+
 function productionData(data: ProductionBootstrap, currentClerkUserId: string): { data: MembaData; membershipId: string; userId: string } | null {
   const employeeMap = new Map<string, ProductionEmployee>()
   for (const membership of data.memberships) {
@@ -188,6 +194,7 @@ function nextOrganizationOrderNumber(data: MembaData, organizationId: string) {
 
 export function MembaProvider({ children }: { children: React.ReactNode }) {
   const { isLoaded: clerkLoaded, isSignedIn, userId: clerkUserId } = useAuth()
+  const pathname = usePathname()
   const [data, setData] = useState<MembaData>(seedData)
   const [session, setSession] = useState<DevelopmentSession>(defaultDevelopmentSession)
   const [hydrated, setHydrated] = useState(false)
@@ -199,7 +206,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
 
     let cancelled = false
     const hydrate = async () => {
-      if (isHostedProduction() && isSignedIn) {
+      if (isHostedProduction() && isSignedIn && !isPublicRoute(pathname)) {
         try {
           const response = await fetch("/api/organisations", { cache: "no-store" })
           if (response.ok) {
@@ -230,6 +237,8 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (!cancelled) {
+        setProductionUnavailable(false)
+        setProductionUnavailableReason("")
         setData(loadLocalData())
         setSession(loadDevelopmentSession())
         setHydrated(true)
@@ -241,7 +250,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [clerkLoaded, clerkUserId, isSignedIn])
+  }, [clerkLoaded, clerkUserId, isSignedIn, pathname])
 
   useEffect(() => {
     if (hydrated && !isHostedProduction()) saveLocalData(data)
@@ -540,7 +549,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
   }
 
   if (productionUnavailable) {
-    return <main className="grid min-h-svh place-items-center bg-background p-6 text-center"><div><h1 className="text-lg font-semibold">Workspace unavailable</h1><p className="mt-2 max-w-md text-sm text-muted-foreground">{productionUnavailableReason}</p></div></main>
+    return <main className="grid min-h-svh place-items-center bg-background p-6 text-center"><div><h1 className="text-lg font-semibold">Workspace unavailable</h1><p className="mt-2 max-w-md text-sm text-muted-foreground">{productionUnavailableReason}</p><Link href="/" className="mt-5 inline-flex min-h-10 items-center rounded-md border px-4 text-sm font-medium hover:bg-muted">Return to homepage</Link></div></main>
   }
 
   return <MembaContext.Provider value={value}>{children}</MembaContext.Provider>
