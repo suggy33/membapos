@@ -207,11 +207,6 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
 
     let cancelled = false
     const hydrate = async () => {
-      if (!cancelled) {
-        setHydrated(false)
-        setProductionUnavailable(false)
-      }
-
       if (isHostedProduction() && isSignedIn && !isPublicRoute(pathname)) {
         const cached = clerkUserId && productionBootstrapRef.current?.clerkUserId === clerkUserId ? productionBootstrapRef.current : null
         if (cached) {
@@ -219,6 +214,10 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
           setSession(cached.session)
           setHydrated(true)
           return
+        }
+        if (!cancelled) {
+          setHydrated(false)
+          setProductionUnavailable(false)
         }
         try {
           const response = await fetch("/api/organisations", { cache: "no-store" })
