@@ -28,6 +28,7 @@ export async function GET() {
   const { userId } = await auth()
   if (!userId) return NextResponse.json({ error: "Unauthorised" }, { status: 401 })
 
+  let stage = "employee lookup"
   try {
     const clerkUser = await currentUser().catch(() => null)
 
@@ -59,16 +60,19 @@ export async function GET() {
     const employee = employees[0]
     if (!employee || employee.status !== "ACTIVE") return NextResponse.json({ error: "No active Memba employee record.", code: "NO_ACTIVE_EMPLOYEE" }, { status: 403 })
 
+    stage = "membership lookup"
     const ownMemberships = await supabaseRestRequest<Membership[]>(
       `organisation_memberships?select=*&employee_id=eq.${employee.id}&active=eq.true`,
       { serviceRole: true },
     )
     if (!ownMemberships.length) return NextResponse.json({ error: "This Clerk account has no active Memba membership.", code: "NO_MEMBERSHIP" }, { status: 403 })
     const isPlatformSuperAdmin = ownMemberships.some((membership) => membership.organisation_id === null && membership.role === "SUPER_ADMIN")
+    stage = "organisation scope lookup"
     const organisationIds = isPlatformSuperAdmin
       ? (await supabaseRestRequest<Array<{ id: string }>>("organisations?select=id", { serviceRole: true })).map((organisation) => organisation.id)
       : ownMemberships.flatMap((membership) => membership.organisation_id ? [membership.organisation_id] : [])
 
+    stage = "workspace bootstrap"
     const [organisations, locations, memberships] = await Promise.all([
       supabaseRestRequest("organisations?select=*&order=name.asc" + (isPlatformSuperAdmin ? "" : `&id=${inFilter(organisationIds)}`), { serviceRole: true }),
       supabaseRestRequest(`locations?select=*&organisation_id=${inFilter(organisationIds)}&order=name.asc`, { serviceRole: true }),
@@ -77,13 +81,14 @@ export async function GET() {
 
     const membershipsForBootstrap = [...new Map([...ownMemberships, ...memberships].map((membership) => [membership.id, membership])).values()]
     const visibleEmployeeIds = [...new Set(membershipsForBootstrap.map((membership) => membership.employee_id).concat(employee.id))]
+    stage = "employee bootstrap"
     const visibleEmployees = await supabaseRestRequest<Employee[]>(`employees?select=id,clerk_user_id,email,display_name,status&id=${inFilter(visibleEmployeeIds)}`, { serviceRole: true })
     const employeeById = new Map(visibleEmployees.map((visibleEmployee) => [visibleEmployee.id, visibleEmployee]))
     const membershipsWithEmployees = membershipsForBootstrap.map((membership) => ({ ...membership, employees: employeeById.get(membership.employee_id) ?? null }))
 
     return NextResponse.json({ organisations, locations, memberships: membershipsWithEmployees })
   } catch (error) {
-    console.error("[organisations] Production bootstrap failed:", error instanceof Error ? error.message : "unknown error")
-    return NextResponse.json({ error: "Unable to load organisations.", code: "PRODUCTION_BOOTSTRAP_FAILED" }, { status: 502 })
+    console.error(`[organisations] Production bootstrap failed during ${stage}:`, error instanceof Error ? error.message : "unknown error")
+    return NextResponse.json({ error: "Unable to load organisations.", code: "PRODUCTION_BOOTSTRAP_FAILED", stage }, { status: 502 })
   }
 }

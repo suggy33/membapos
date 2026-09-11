@@ -65,16 +65,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         Skip to content
       </a>
 
-      <div className="fixed inset-x-0 top-0 z-40 flex min-h-10 items-center justify-center border-b border-amber-500/20 bg-amber-50 px-12 py-2 text-center text-xs font-medium text-amber-950 dark:bg-amber-950 dark:text-amber-100">
-        {session.impersonationActorUserId ? (
+      {session.impersonationActorUserId && (
+        <div className="fixed inset-x-0 top-0 z-40 flex min-h-10 items-center justify-center border-b border-amber-500/20 bg-amber-50 px-12 py-2 text-center text-xs font-medium text-amber-950 dark:bg-amber-950 dark:text-amber-100">
           <span className="flex items-center gap-3">
             Impersonating {user.name} · {session.impersonationReason}
             <button type="button" onClick={endImpersonation} className="rounded underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-amber-900">Exit</button>
           </span>
-        ) : "Local development mode · Data stays in this browser"}
-      </div>
+        </div>
+      )}
 
-      <header className="fixed inset-x-0 top-10 z-30 flex h-16 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur md:pl-[17rem] md:pr-6">
+      <header className={cn("fixed inset-x-0 z-30 flex h-16 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur md:pl-[17rem] md:pr-6", session.impersonationActorUserId ? "top-10" : "top-0")}>
         <button
           type="button"
           className="grid size-11 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring md:hidden"
@@ -100,7 +100,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {mobileOpen && <button type="button" className="fixed inset-0 z-40 bg-foreground/30 md:hidden" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
 
-      <aside className={cn("fixed bottom-0 left-0 top-10 z-50 flex w-64 flex-col border-r bg-sidebar text-sidebar-foreground transition-transform duration-200 motion-reduce:transition-none md:translate-x-0", mobileOpen ? "translate-x-0" : "-translate-x-full")}>
+      <aside className={cn("fixed bottom-0 z-50 flex w-64 flex-col border-r bg-sidebar text-sidebar-foreground transition-transform duration-200 motion-reduce:transition-none md:translate-x-0", session.impersonationActorUserId ? "top-10" : "top-0", mobileOpen ? "translate-x-0" : "-translate-x-full")}>
         <div className="flex h-16 items-center justify-between border-b px-5">
           <Link href="/dashboard" className="flex min-h-10 items-center rounded-md focus-visible:ring-2 focus-visible:ring-sidebar-ring">
             <Image src="/logo.svg" alt="Memba" width={151} height={32} className="h-8 w-auto" priority />
@@ -158,7 +158,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main id="main-content" className="pt-[6.5rem] md:pl-64">
+      <main id="main-content" className={cn("md:pl-64", session.impersonationActorUserId ? "pt-[6.5rem]" : "pt-16")}>
         {children}
       </main>
     </div>
