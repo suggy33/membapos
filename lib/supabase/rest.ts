@@ -7,8 +7,10 @@ type SupabaseRequestOptions = RequestInit & {
 }
 
 function getSupabaseConfig(serviceRole: boolean) {
-  const url = process.env.SUPABASE_PROJECT_URL
-  const key = serviceRole ? process.env.SUPABASE_SECRET_KEY : process.env.SUPABASE_PUBLIC_KEY
+  const url = process.env.SUPABASE_PROJECT_URL ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = serviceRole
+    ? process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY
+    : process.env.SUPABASE_PUBLIC_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!url || !key) {
     throw new Error("Supabase server configuration is incomplete.")

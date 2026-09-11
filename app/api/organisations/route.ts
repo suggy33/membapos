@@ -51,12 +51,13 @@ export async function GET() {
       { serviceRole: true },
     )
     const employee = employees[0]
-    if (!employee || employee.status !== "ACTIVE") return NextResponse.json({ error: "No active Memba employee record." }, { status: 403 })
+    if (!employee || employee.status !== "ACTIVE") return NextResponse.json({ error: "No active Memba employee record.", code: "NO_ACTIVE_EMPLOYEE" }, { status: 403 })
 
     const ownMemberships = await supabaseRestRequest<Membership[]>(
       `organisation_memberships?select=*&employee_id=eq.${employee.id}&active=eq.true`,
       { serviceRole: true },
     )
+    if (!ownMemberships.length) return NextResponse.json({ error: "This Clerk account has no active Memba membership.", code: "NO_MEMBERSHIP" }, { status: 403 })
     const isPlatformSuperAdmin = ownMemberships.some((membership) => membership.organisation_id === null && membership.role === "SUPER_ADMIN")
     const organisationIds = isPlatformSuperAdmin
       ? (await supabaseRestRequest<Array<{ id: string }>>("organisations?select=id", { serviceRole: true })).map((organisation) => organisation.id)
@@ -75,7 +76,8 @@ export async function GET() {
     const membershipsWithEmployees = membershipsForBootstrap.map((membership) => ({ ...membership, employees: employeeById.get(membership.employee_id) ?? null }))
 
     return NextResponse.json({ organisations, locations, memberships: membershipsWithEmployees })
-  } catch {
-    return NextResponse.json({ error: "Unable to load organisations." }, { status: 502 })
+  } catch (error) {
+    console.error("[organisations] Production bootstrap failed:", error instanceof Error ? error.message : "unknown error")
+    return NextResponse.json({ error: "Unable to load organisations.", code: "PRODUCTION_BOOTSTRAP_FAILED" }, { status: 502 })
   }
 }

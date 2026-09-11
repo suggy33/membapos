@@ -192,6 +192,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<DevelopmentSession>(defaultDevelopmentSession)
   const [hydrated, setHydrated] = useState(false)
   const [productionUnavailable, setProductionUnavailable] = useState(false)
+  const [productionUnavailableReason, setProductionUnavailableReason] = useState("Memba could not load the production workspace. Refresh the page or contact an administrator.")
 
   useEffect(() => {
     if (!clerkLoaded) return
@@ -205,11 +206,17 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
             const bootstrap = clerkUserId ? productionData((await response.json()) as ProductionBootstrap, clerkUserId) : null
             if (!cancelled && bootstrap) {
               setProductionUnavailable(false)
+              setProductionUnavailableReason("")
               setData(bootstrap.data)
               setSession({ userId: bootstrap.userId, membershipId: bootstrap.membershipId, organizationId: null })
               setHydrated(true)
               return
             }
+          } else if (response.status === 403) {
+            const failure = (await response.json().catch(() => null)) as { code?: string } | null
+            setProductionUnavailableReason(failure?.code === "NO_MEMBERSHIP"
+              ? "Your Clerk account is signed in but has not been assigned to a Memba organisation. Ask a Super Admin to activate your membership."
+              : "Your Clerk account is not active in Memba. Ask a Super Admin to check the employee record.")
           }
         } catch {
           // The hosted app must not fall back to demo data.
@@ -533,7 +540,7 @@ export function MembaProvider({ children }: { children: React.ReactNode }) {
   }
 
   if (productionUnavailable) {
-    return <main className="grid min-h-svh place-items-center bg-background p-6 text-center"><div><h1 className="text-lg font-semibold">Workspace unavailable</h1><p className="mt-2 max-w-md text-sm text-muted-foreground">Memba could not load the production workspace. Refresh the page or contact an administrator.</p></div></main>
+    return <main className="grid min-h-svh place-items-center bg-background p-6 text-center"><div><h1 className="text-lg font-semibold">Workspace unavailable</h1><p className="mt-2 max-w-md text-sm text-muted-foreground">{productionUnavailableReason}</p></div></main>
   }
 
   return <MembaContext.Provider value={value}>{children}</MembaContext.Provider>
