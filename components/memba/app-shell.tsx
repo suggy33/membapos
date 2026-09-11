@@ -7,8 +7,6 @@ import { useState } from "react"
 import {
   ArrowRightLeft,
   Building2,
-  ChevronDown,
-  CircleUserRound,
   ClipboardList,
   Clock3,
   LayoutDashboard,
@@ -55,7 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState("")
   const router = useRouter()
   const pathname = usePathname()
-  const { data, endImpersonation, membership, organization, session, switchMembership, switchOrganization, user } = useMemba()
+  const { data, endImpersonation, membership, organization, session, switchOrganization, user } = useMemba()
   const visibleItems = navItems.filter((item) => item.roles.includes(membership.role))
   function search(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); const query = searchQuery.trim().toLowerCase(); if (!query) return; const product = data.products.find((item) => item.name.toLowerCase().includes(query) || item.designNumber.toLowerCase().includes(query)); const variant = data.variants.find((item) => item.sku.toLowerCase().includes(query) || item.barcode.toLowerCase().includes(query)); const order = data.orders.find((item) => item.orderNumber.toLowerCase().includes(query)); const customer = data.customers.find((item) => `${item.firstName} ${item.lastName}`.toLowerCase().includes(query) || item.email.toLowerCase().includes(query) || item.phone.includes(query)); router.push(order ? `/orders/${order.id}` : customer ? "/customers" : product || variant ? "/inventory" : "/inventory"); setSearchQuery("") }
 
@@ -111,18 +109,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="border-b p-3">
-          <label className="mb-1.5 block px-1 text-xs font-medium text-muted-foreground" htmlFor="persona">Development persona</label>
-          <div className="relative">
-            <CircleUserRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <select id="persona" disabled={Boolean(session.impersonationActorUserId)} value={session.membershipId} onChange={(event) => switchMembership(event.target.value)} className="h-11 w-full appearance-none rounded-md border bg-background pl-9 pr-8 text-sm disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-ring">
-              {data.memberships.map((item) => {
-                const person = data.users.find((candidate) => candidate.id === item.userId)
-                return <option key={item.id} value={item.id}>{person?.name} · {roleLabels[item.role]}</option>
-              })}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          </div>
-
           {membership.role === "SUPER_ADMIN" && (
             <div className="mt-3">
               <label className="mb-1.5 block px-1 text-xs font-medium text-muted-foreground" htmlFor="organization">Organization view</label>
