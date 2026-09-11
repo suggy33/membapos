@@ -101,7 +101,7 @@ function isHostedProduction() {
 }
 
 function isPublicRoute(pathname: string) {
-  return pathname === "/" || pathname === "/login" || pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up")
+  return pathname === "/" || pathname === "/login" || pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up") || pathname.startsWith("/sign-out")
 }
 
 function productionData(data: ProductionBootstrap, currentClerkUserId: string): { data: MembaData; membershipId: string; userId: string } | null {
