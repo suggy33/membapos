@@ -8,8 +8,8 @@ import {
   ArrowRightLeft,
   Building2,
   ClipboardList,
-  Clock3,
   LayoutDashboard,
+  LogOut,
   Menu,
   PackageSearch,
   Plus,
@@ -38,7 +38,6 @@ const navItems = [
   { label: "Locations", href: "/organizations", icon: Store, roles: ["SUPER_ADMIN", "ADMIN"] },
   { label: "People", href: "/organizations", icon: Users, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER"] },
   { label: "Reports", href: "/reports", icon: ClipboardList, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
-  { label: "Open / close day", href: "/day", icon: Clock3, roles: ["SUPER_ADMIN", "ADMIN", "STORE_MANAGER", "STORE_USER"] },
 ] satisfies Array<{ label: string; href: string; icon: typeof LayoutDashboard; roles: Role[] }>
 
 const roleLabels: Record<Role, string> = {
@@ -51,6 +50,7 @@ const roleLabels: Record<Role, string> = {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [accountOpen, setAccountOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
   const { data, endImpersonation, membership, organization, session, switchOrganization, user } = useMemba()
@@ -87,12 +87,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted-foreground" placeholder="Search products, orders, customers…" aria-label="Search products, orders, customers" />
           <kbd className="ml-auto hidden rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px] sm:inline">⌘ K</kbd>
         </form>
-        <div className="ml-auto hidden items-center gap-3 lg:flex">
+        <div className="relative ml-auto flex items-center gap-3">
           <div className="text-right">
             <p className="text-sm font-medium leading-4">{user.name}</p>
             <p className="mt-1 text-xs text-muted-foreground">{roleLabels[membership.role]}</p>
           </div>
-          <span className="grid size-10 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">{user.initials}</span>
+          <button type="button" className="grid size-10 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-foreground hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring" aria-label="Open account menu" aria-expanded={accountOpen} onClick={() => setAccountOpen((open) => !open)}>{user.initials}</button>
+          {accountOpen && <div className="absolute right-0 top-12 z-50 w-48 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg">
+            <Link href="/settings" onClick={() => setAccountOpen(false)} className="flex min-h-10 items-center rounded-md px-3 text-sm hover:bg-accent">Settings</Link>
+            <Link href="/sign-out" onClick={() => setAccountOpen(false)} className="flex min-h-10 items-center gap-2 rounded-md px-3 text-sm text-destructive hover:bg-destructive/10"><LogOut className="size-4" aria-hidden="true" />Sign out</Link>
+          </div>}
         </div>
       </header>
 
