@@ -30,7 +30,6 @@ export async function supabaseRestRequest<T>(path: string, options: SupabaseRequ
     ...requestInit,
     headers: {
       apikey: key,
-      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
       ...headers,
     },
