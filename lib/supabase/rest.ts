@@ -26,17 +26,24 @@ function getSupabaseConfig(serviceRole: boolean) {
 export async function supabaseRestRequest<T>(path: string, options: SupabaseRequestOptions = {}) {
   const { serviceRole = false, headers, ...requestInit } = options
   const { url, key } = getSupabaseConfig(serviceRole)
-  const response = await fetch(`${url}/rest/v1/${path}`, {
-    ...requestInit,
-    headers: {
-      apikey: key,
-      "Content-Type": "application/json",
-      ...headers,
-    },
-    cache: "no-store",
-  })
+  const requestUrl = `${url}/rest/v1/${path}`
+  let response: Response | undefined
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    response = await fetch(requestUrl, {
+      ...requestInit,
+      headers: {
+        apikey: key,
+        "Content-Type": "application/json",
+        ...headers,
+      },
+      cache: "no-store",
+    })
+    if (![502, 503, 504].includes(response.status) || attempt === 2) break
+    await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)))
+  }
 
-  if (!response.ok) {
+  if (!response || !response.ok) {
+    if (!response) throw new Error("Supabase request failed without a response.")
     const responseBody = (await response.text()).replace(/\s+/g, " ").slice(0, 300)
     throw new Error(`Supabase request failed with status ${response.status}${responseBody ? `: ${responseBody}` : "."}`)
   }
