@@ -9,7 +9,7 @@ const roles = { ADMIN: "org:admin", STORE_MANAGER: "org:member", STORE_USER: "or
 export async function POST(request: Request, { params }: { params: Promise<{ organisationId: string }> }) {
   const { organisationId } = await params
   try {
-    const { userId } = await requireOrganisationAdmin(organisationId)
+    await requireOrganisationAdmin(organisationId)
     const body = await request.json() as { name?: unknown; email?: unknown; role?: unknown; locationIds?: unknown }
     const name = String(body.name ?? "").trim()
     const email = String(body.email ?? "").trim().toLowerCase()
@@ -28,7 +28,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ org
     if (!employeeId) return NextResponse.json({ error: "Could not create the pending employee record." }, { status: 500 })
 
     const redirectUrl = new URL("/sign-up", request.url).toString()
-    const invitation = await (await clerkClient()).organizations.createOrganizationInvitation({ organizationId: clerkOrganisationId, emailAddress: email, role: roles[role], inviterUserId: userId, redirectUrl })
+    const invitation = await (await clerkClient()).organizations.createOrganizationInvitation({ organizationId: clerkOrganisationId, emailAddress: email, role: roles[role], redirectUrl })
     await supabaseRestRequest("organisation_memberships", { method: "POST", serviceRole: true, headers: { Prefer: "return=minimal" }, body: JSON.stringify({ organisation_id: organisationId, employee_id: employeeId, role, location_ids: locationIds, active: true }) })
     return NextResponse.json({ ok: true, invitationId: invitation.id }, { status: 201 })
   } catch (error) {
