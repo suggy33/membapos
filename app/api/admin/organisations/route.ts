@@ -38,6 +38,7 @@ export async function POST(request: Request) {
     await supabaseRestRequest("organisation_memberships", { method: "POST", serviceRole: true, headers: { Prefer: "return=minimal" }, body: JSON.stringify({ organisation_id: organisationId, employee_id: employeeId, role: "ADMIN", location_ids: [locations[0].id], active: true }) })
     return NextResponse.json({ organisationId }, { status: 201 })
   } catch (error) {
+    console.error("[admin/organisations] Create failed:", error instanceof Error ? error.message : "unknown error")
     if (clerkOrganisationId) { try { await (await clerkClient()).organizations.deleteOrganization(clerkOrganisationId) } catch { /* preserve the original failure */ } }
     const message = error instanceof Error ? error.message : ""
     const status = message === "UNAUTHORISED" ? 401 : message === "FORBIDDEN" ? 403 : 500

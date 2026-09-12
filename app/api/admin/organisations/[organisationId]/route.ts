@@ -26,6 +26,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ or
     return NextResponse.json({ ok: true, maxLocations })
   } catch (error) {
     const message = error instanceof Error ? error.message : ""
+    console.error("[admin/organisations] Update failed:", message || "unknown error")
     return NextResponse.json({ error: message === "UNAUTHORISED" ? "Unauthorised" : "You do not have permission to update this organisation." }, { status: message === "UNAUTHORISED" ? 401 : 403 })
   }
 }

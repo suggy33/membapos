@@ -33,6 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ org
     return NextResponse.json({ location: created[0] }, { status: 201 })
   } catch (error) {
     const message = error instanceof Error ? error.message : ""
+    console.error("[admin/locations] Create failed:", message || "unknown error")
     return NextResponse.json({ error: message === "UNAUTHORISED" ? "Unauthorised" : "You do not have permission to manage this organisation." }, { status: message === "UNAUTHORISED" ? 401 : 403 })
   }
 }
