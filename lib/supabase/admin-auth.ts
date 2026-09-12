@@ -31,8 +31,15 @@ export async function requirePlatformSuperAdmin() {
   if (!userId) throw new Error("UNAUTHORISED")
   const employees = await supabaseRestRequest<Array<{ id: string; status: string }>>(`employees?select=id,status&clerk_user_id=eq.${encodeURIComponent(userId)}&limit=1`, { serviceRole: true })
   const employee = employees[0]
-  if (!employee || employee.status !== "ACTIVE") throw new Error("FORBIDDEN")
+  if (!employee || employee.status !== "ACTIVE") {
+    console.error("[admin-auth] Platform check failed: employee missing or inactive", { found: Boolean(employee), status: employee?.status ?? null })
+    throw new Error("FORBIDDEN")
+  }
   const memberships = await supabaseRestRequest<Membership[]>(`organisation_memberships?select=organisation_id,role,active&employee_id=eq.${employee.id}&active=eq.true`, { serviceRole: true })
-  if (!memberships.some((membership) => membership.role === "SUPER_ADMIN" && membership.organisation_id === null)) throw new Error("FORBIDDEN")
+  const platformSuperAdmin = memberships.some((membership) => membership.role === "SUPER_ADMIN" && membership.organisation_id === null)
+  if (!platformSuperAdmin) {
+    console.error("[admin-auth] Platform check failed: no platform Super Admin membership", { membershipCount: memberships.length, memberships: memberships.map((membership) => ({ role: membership.role, organisationIdIsNull: membership.organisation_id === null, active: membership.active })) })
+    throw new Error("FORBIDDEN")
+  }
   return { userId, employeeId: employee.id }
 }
