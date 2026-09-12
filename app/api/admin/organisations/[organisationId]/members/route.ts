@@ -27,7 +27,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ org
     const employeeId = existing[0]?.id ?? (await supabaseRestRequest<Array<{ id: string }>>("employees", { method: "POST", serviceRole: true, headers: { Prefer: "return=representation" }, body: JSON.stringify({ email, display_name: name, status: "INVITED" }) }))[0]?.id
     if (!employeeId) return NextResponse.json({ error: "Could not create the pending employee record." }, { status: 500 })
 
-    const invitation = await (await clerkClient()).organizations.createOrganizationInvitation({ organizationId: clerkOrganisationId, emailAddress: email, role: roles[role], inviterUserId: userId, redirectUrl: "/sign-up" })
+    const redirectUrl = new URL("/sign-up", request.url).toString()
+    const invitation = await (await clerkClient()).organizations.createOrganizationInvitation({ organizationId: clerkOrganisationId, emailAddress: email, role: roles[role], inviterUserId: userId, redirectUrl })
     await supabaseRestRequest("organisation_memberships", { method: "POST", serviceRole: true, headers: { Prefer: "return=minimal" }, body: JSON.stringify({ organisation_id: organisationId, employee_id: employeeId, role, location_ids: locationIds, active: true }) })
     return NextResponse.json({ ok: true, invitationId: invitation.id }, { status: 201 })
   } catch (error) {

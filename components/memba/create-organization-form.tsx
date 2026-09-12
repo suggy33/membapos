@@ -1,7 +1,6 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { useRef, useState } from "react"
 import { Building2, Check, Store, UserRound } from "lucide-react"
 
@@ -13,15 +12,14 @@ import { cn } from "@/lib/utils"
 type FieldErrors = Partial<Record<keyof CreateOrganizationInput | "form", string>>
 
 export function CreateOrganizationForm() {
-  const router = useRouter()
-  const { createOrganization, membership } = useMemba()
+  const { membership } = useMemba()
   const [errors, setErrors] = useState<FieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
   const formRef = useRef<HTMLFormElement>(null)
 
   if (membership.role !== "SUPER_ADMIN") return <div className="mx-auto max-w-xl px-4 py-20 text-center"><h1 className="text-2xl font-semibold">Super admin access required</h1><p className="mt-2 text-sm text-muted-foreground">Only platform super admins can create organizations.</p><Link href="/" className={cn(buttonVariants({ variant: "outline" }), "mt-6")}>Return to dashboard</Link></div>
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
     const input: CreateOrganizationInput = { name: String(form.get("name") ?? ""), code: String(form.get("code") ?? ""), adminName: String(form.get("adminName") ?? ""), adminEmail: String(form.get("adminEmail") ?? ""), locationName: String(form.get("locationName") ?? ""), locationCode: String(form.get("locationCode") ?? ""), locationType: form.get("locationType") === "WAREHOUSE" ? "WAREHOUSE" : "STORE", suburb: String(form.get("suburb") ?? ""), state: String(form.get("state") ?? "VIC"), maxLocations: Number(form.get("maxLocations") ?? 1) }
@@ -30,8 +28,8 @@ export function CreateOrganizationForm() {
     const firstError = Object.keys(nextErrors)[0]
     if (firstError) { formRef.current?.querySelector<HTMLElement>(`[name="${firstError}"]`)?.focus(); return }
     setSubmitting(true)
-    try { const result = createOrganization(input); router.push(`/organizations/${result.organizationId}`) }
-    catch (error) { setErrors({ form: error instanceof Error ? error.message : "Could not create this organization." }); setSubmitting(false) }
+    try { const response = await fetch("/api/admin/organisations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) }); const raw = await response.text(); let result: { organisationId?: string; error?: string } | null = null; if (raw.trim()) { try { result = JSON.parse(raw) as { organisationId?: string; error?: string } } catch { result = null } } if (!response.ok || !result?.organisationId) throw new Error(result?.error ?? "Could not create this organisation."); window.location.assign(`/organizations/${result.organisationId}`) }
+    catch (error) { setErrors({ form: error instanceof Error ? error.message : "Could not create this organisation." }); setSubmitting(false) }
   }
 
   return <div className="mx-auto max-w-4xl px-4 py-6 md:px-6 lg:px-8 lg:py-8"><div><p className="text-sm font-medium text-primary">Platform administration</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Create organization</h1><p className="mt-2 text-sm text-muted-foreground">Set up the business, its first location, and its organization administrator.</p></div>
