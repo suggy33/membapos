@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     stage = "Clerk organisation creation"
     const clerk = await clerkClient()
-    const clerkOrganisation = await clerk.organizations.createOrganization({ name, slug: code.toLowerCase() })
+    const clerkOrganisation = await clerk.organizations.createOrganization({ name })
     clerkOrganisationId = clerkOrganisation.id
     stage = "organisation database creation"
     const created = await supabaseRestRequest<Array<{ id: string }>>("organisations", { method: "POST", serviceRole: true, headers: { Prefer: "return=representation" }, body: JSON.stringify({ clerk_organisation_id: clerkOrganisationId, name, code, status: "TRIAL", max_locations: maxLocations }) })
