@@ -49,7 +49,8 @@ export async function supabaseRestRequest<T>(path: string, options: SupabaseRequ
   }
 
   if (response.status === 204) return null as T
-  return (await response.json()) as T
+  const responseBody = await response.text()
+  return (responseBody ? JSON.parse(responseBody) : null) as T
 }
 
 export async function getAuthenticatedSupabaseToken() {
