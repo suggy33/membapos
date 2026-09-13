@@ -1,3 +1,4 @@
+import { clerkClient } from "@clerk/nextjs/server"
 import { verifyWebhook } from "@clerk/nextjs/webhooks"
 import { NextRequest, NextResponse } from "next/server"
 
@@ -84,9 +85,41 @@ async function syncMembership(data: {
     `employees?select=id&clerk_user_id=eq.${encodeURIComponent(data.public_user_data.user_id)}&limit=1`,
     { serviceRole: true },
   )
-  if (!employee[0]) return
+  let employeeId = employee[0]?.id
+  if (!employeeId) {
+    const clerkUser = await (await clerkClient()).users.getUser(data.public_user_data.user_id)
+    const email = clerkUser.primaryEmailAddress?.emailAddress ?? clerkUser.emailAddresses[0]?.emailAddress
+    if (!email) return
+    const pendingEmployee = await supabaseRestRequest<Array<{ id: string }>>(
+      `employees?select=id&email=ilike.${encodeURIComponent(email)}&limit=1`,
+      { serviceRole: true },
+    )
+    employeeId = pendingEmployee[0]?.id
+    if (employeeId) {
+      await supabaseRestRequest(`employees?id=eq.${employeeId}`, {
+        method: "PATCH",
+        serviceRole: true,
+        headers: { Prefer: "return=minimal" },
+        body: JSON.stringify({ clerk_user_id: data.public_user_data.user_id, status: "ACTIVE" }),
+      })
+    }
+  }
+  if (!employeeId) return
 
   const role = data.role === "org:admin" ? "ADMIN" : "STORE_USER"
+  const existingMembership = await supabaseRestRequest<Array<{ id: string }>>(
+    `organisation_memberships?select=id&organisation_id=eq.${organisationId}&employee_id=eq.${employeeId}&limit=1`,
+    { serviceRole: true },
+  )
+  if (existingMembership[0]) {
+    await supabaseRestRequest(`organisation_memberships?id=eq.${existingMembership[0].id}`, {
+      method: "PATCH",
+      serviceRole: true,
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({ clerk_membership_id: data.id, role, active: true }),
+    })
+    return
+  }
   await supabaseRestRequest("organisation_memberships?on_conflict=clerk_membership_id", {
     method: "POST",
     serviceRole: true,
@@ -94,7 +127,7 @@ async function syncMembership(data: {
     body: JSON.stringify({
       clerk_membership_id: data.id,
       organisation_id: organisationId,
-      employee_id: employee[0].id,
+      employee_id: employeeId,
       role,
       active: true,
     }),
